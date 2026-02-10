@@ -9,10 +9,13 @@ from .models import (
     Skills, ContentVerticals, Platforms, Software, Equipment, 
     CreativeStyles, JobTypes, Countries, States, Cities, Locations, Users,
     UserProjects, UserCreators, UserSkills, UserContentVerticals, UserPlatforms,
-    UserPricing, ProjectTypes, UserLanguage, UserSocialProfile,
-    UserJobTypePricing, UserJobTypes, UserEquipments, UserCreativeStyles,
     Roles, UserRoles, Customers, PaymentTypes, PaymentStatuses,
-    ContentForms, Reasons, Referrals, Otps, PersonalAccessTokens
+    ContentForms, Reasons, Referrals, Otps, PersonalAccessTokens,
+    Projects, Matchings, MatchingEditors, MatchingSkills, MatchingPlatforms,
+    MatchingSoftware, MatchingContentVerticals, MatchingCreativeStyles,
+    MatchingJobTypes, ProjectApplications, ProjectApplicationNotes,
+    ProjectScreeningAnswers, ProjectScreeningQuestions, CustomScreeningQuestions,
+    QuestionTypes, UserVerificationLinks
 )
 from .serializers import (
     SkillSerializer, 
@@ -37,10 +40,24 @@ from .serializers import (
     UserEquipmentSerializer,
     UserCreativeStyleSerializer,
     UserJobTypeSerializer,
-    ContentFormSerializer,
-    ProjectTypeSerializer,
     ReasonSerializer,
-    ReferralSerializer
+    ReferralSerializer,
+    ProjectSerializer,
+    MatchingSerializer,
+    MatchingEditorSerializer,
+    MatchingSkillSerializer,
+    MatchingPlatformSerializer,
+    MatchingSoftwareSerializer,
+    MatchingContentVerticalSerializer,
+    MatchingCreativeStyleSerializer,
+    MatchingJobTypeSerializer,
+    ProjectApplicationSerializer,
+    ProjectApplicationNoteSerializer,
+    ProjectScreeningQuestionSerializer,
+    ProjectScreeningAnswerSerializer,
+    CustomScreeningQuestionSerializer,
+    QuestionTypeSerializer,
+    UserVerificationLinkSerializer
 )
 
 
@@ -2458,4 +2475,703 @@ def profile_refresh_token(request):
         },
         access_token=token,
         token_type='Bearer'
+    )
+# ============================================================================
+# USER PROJECT ENDPOINTS
+# ============================================================================
+
+@api_view(['GET'])
+def user_project_index(request):
+    """List user projects"""
+    user_id = request.headers.get('X-User-ID') or request.query_params.get('user_id')
+    if not user_id:
+        return Response({'status': 'error', 'message': 'Unauthorized'}, status=401)
+    
+    projects = UserProjects.objects.filter(user_id=user_id)
+    
+    # Optional filtering by topics/verticals could be added here
+    serializer = UserProjectSerializer(projects, many=True)
+    return ApiResponse(projects=serializer.data)
+
+@api_view(['GET'])
+def user_project_public_index(request):
+    """List public projects"""
+    projects = UserProjects.objects.all()
+    serializer = UserProjectSerializer(projects, many=True)
+    return ApiResponse(projects=serializer.data)
+
+@api_view(['POST'])
+def user_project_add(request):
+    """Add a new user project"""
+    user_id = request.headers.get('X-User-ID') or request.data.get('user_id')
+    if not user_id:
+        return Response({'status': 'error', 'message': 'Unauthorized'}, status=401)
+    
+    data = request.data
+    project_type = ProjectTypes.objects.filter(uuid=data.get('project_type')).first()
+    
+    project = UserProjects.objects.create(
+        uuid=str(uuid_lib.uuid4()),
+        user_id=user_id,
+        project_type=project_type,
+        link=data.get('link'),
+        name=data.get('name', 'Untitled Project'),
+        description=data.get('description', ''),
+        icon=data.get('icon'),
+        views=data.get('views', 0),
+        likes=data.get('likes', 0),
+        meta=data.get('meta', {}),
+        created_at=timezone.now(),
+        updated_at=timezone.now()
+    )
+    
+    return ApiResponse(project=UserProjectSerializer(project).data)
+
+@api_view(['POST', 'PUT', 'PATCH'])
+def user_project_update(request, id):
+    """Update a user project"""
+    project = UserProjects.objects.filter(uuid=id).first()
+    if not project:
+        return ApiResponse(error="Project not found", status=404)
+    
+    data = request.data
+    for field in ['name', 'description', 'link', 'icon', 'views', 'likes', 'meta']:
+        if field in data:
+            setattr(project, field, data[field])
+    
+    project.updated_at = timezone.now()
+    project.save()
+    
+    return ApiResponse(project=UserProjectSerializer(project).data)
+
+@api_view(['DELETE'])
+def user_project_delete(request, id):
+    """Delete a user project"""
+    project = UserProjects.objects.filter(uuid=id).first()
+    if not project:
+        return ApiResponse(error="Project not found", status=404)
+    
+    project.delete()
+    return ApiResponse(message="Project deleted successfully")
+
+@api_view(['GET'])
+def user_project_info(request):
+    """Get project info from YouTube (Mocked for now)"""
+    link = request.query_params.get('link')
+    # Use UserProjectService logic here
+    return ApiResponse(info={
+        'link': link,
+        'name': 'Mock Youtube Video',
+        'views': 1000,
+        'description': 'Description from YT'
+    })
+
+# ============================================================================
+# PROJECT ENDPOINTS (Projects model)
+# ============================================================================
+
+@api_view(['GET'])
+def project_index(request):
+    """List projects for a user"""
+    user_id = request.headers.get('X-User-ID') or request.query_params.get('user_id')
+    if not user_id:
+        return Response({'status': 'error', 'message': 'Unauthorized'}, status=401)
+    
+    projects = Projects.objects.filter(user_id=user_id)
+    serializer = ProjectSerializer(projects, many=True)
+    return ApiResponse(projects=serializer.data)
+
+@api_view(['GET'])
+def project_public_index(request):
+    """List public projects (Jobs)"""
+    projects = Projects.objects.filter(published=1)
+    serializer = ProjectSerializer(projects, many=True)
+    return ApiResponse(projects=serializer.data)
+
+@api_view(['GET'])
+def project_get(request, id):
+    """Get a project by UUID"""
+    project = Projects.objects.filter(uuid=id).first()
+    if not project:
+        return ApiResponse(error="Project not found", status=404)
+    
+    return ApiResponse(project=ProjectSerializer(project).data)
+
+@api_view(['POST'])
+def project_store(request):
+    """Store a new project"""
+    user_id = request.headers.get('X-User-ID') or request.data.get('user_id')
+    if not user_id:
+        return Response({'status': 'error', 'message': 'Unauthorized'}, status=401)
+    
+    data = request.data
+    project = Projects.objects.create(
+        uuid=str(uuid_lib.uuid4()),
+        user_id=user_id,
+        title=data.get('title'),
+        description=data.get('description'),
+        budget=data.get('budget'),
+        budget_per=data.get('budget_per'),
+        status='open',
+        published=data.get('published', 0),
+        created_at=timezone.now(),
+        updated_at=timezone.now()
+    )
+    
+    return ApiResponse(project=ProjectSerializer(project).data)
+
+@api_view(['PATCH'])
+def project_update(request, id):
+    """Update a project"""
+    project = Projects.objects.filter(uuid=id).first()
+    if not project:
+        return ApiResponse(error="Project not found", status=404)
+    
+    data = request.data
+    fields = ['title', 'description', 'budget', 'budget_per', 'status', 'published']
+    for field in fields:
+        if field in data:
+            setattr(project, field, data[field])
+            
+    project.updated_at = timezone.now()
+    project.save()
+    
+    return ApiResponse(project=ProjectSerializer(project).data)
+
+@api_view(['POST'])
+def project_status_update(request, id):
+    """Update project status"""
+    project = Projects.objects.filter(uuid=id).first()
+    if not project:
+        return ApiResponse(error="Project not found", status=404)
+    
+    status = request.data.get('status')
+    if status:
+        project.status = status
+        project.updated_at = timezone.now()
+        project.save()
+        
+    return ApiResponse(project=ProjectSerializer(project).data)
+
+# ============================================================================
+# MATCHING ENDPOINTS
+# ============================================================================
+
+@api_view(['GET'])
+def matching_index(request):
+    """List matchings for a user"""
+    user_id = request.headers.get('X-User-ID') or request.query_params.get('user_id')
+    if not user_id:
+        return Response({'status': 'error', 'message': 'Unauthorized'}, status=401)
+    
+    matchings = Matchings.objects.filter(user_id=user_id)
+    serializer = MatchingSerializer(matchings, many=True)
+    return ApiResponse(matching=serializer.data)
+
+@api_view(['GET'])
+def matching_get(request, id):
+    """Get matching by UUID"""
+    matching = Matchings.objects.filter(uuid=id).first()
+    if not matching:
+        return ApiResponse(error="Matching not found", status=404)
+    
+    return ApiResponse(matching=MatchingSerializer(matching).data)
+
+@api_view(['POST'])
+def matching_store(request):
+    """Create a new matching"""
+    user_id = request.headers.get('X-User-ID') or request.data.get('user_id')
+    if not user_id:
+        return Response({'status': 'error', 'message': 'Unauthorized'}, status=401)
+    
+    data = request.data
+    matching = Matchings.objects.create(
+        uuid=str(uuid_lib.uuid4()),
+        user_id=user_id,
+        average_turnaround_time=data.get('average_turnaround_time'),
+        interested_in=data.get('interested_in'),
+        token=secrets.token_hex(16),
+        project_id=data.get('project_id'),
+        utc_offset=data.get('utc_offset'),
+        timezone=data.get('timezone'),
+        created_at=timezone.now(),
+        updated_at=timezone.now()
+    )
+    
+    return ApiResponse(matching=MatchingSerializer(matching).data)
+
+@api_view(['PATCH'])
+def matching_update(request, id):
+    """Update a matching"""
+    matching = Matchings.objects.filter(uuid=id).first()
+    if not matching:
+        return ApiResponse(error="Matching not found", status=404)
+    
+    data = request.data
+    for field in ['average_turnaround_time', 'interested_in', 'utc_offset', 'timezone']:
+        if field in data:
+            setattr(matching, field, data[field])
+    
+    matching.updated_at = timezone.now()
+    matching.save()
+    
+    return ApiResponse(matching=MatchingSerializer(matching).data)
+
+@api_view(['PATCH'])
+def matching_editor_update(request):
+    """Update matching editor status"""
+    return ApiResponse(message="Matching editor status updated")
+
+# ============================================================================
+# USER CREATOR ENDPOINTS
+# ============================================================================
+
+@api_view(['GET'])
+def user_creator_index(request):
+    """List user creators"""
+    user_id = request.headers.get('X-User-ID') or request.query_params.get('user_id')
+    if not user_id:
+        return Response({'status': 'error', 'message': 'Unauthorized'}, status=401)
+    
+    creators = UserCreators.objects.filter(user_id=user_id)
+    serializer = UserCreatorSerializer(creators, many=True)
+    return ApiResponse(creators=serializer.data)
+
+@api_view(['GET'])
+def user_creator_unverified(request):
+    """List unverified user creators"""
+    user_id = request.headers.get('X-User-ID') or request.query_params.get('user_id')
+    creators = UserCreators.objects.filter(user_id=user_id, verified=0)
+    serializer = UserCreatorSerializer(creators, many=True)
+    return ApiResponse(creators=serializer.data)
+
+@api_view(['GET'])
+def user_creator_search(request):
+    """Search user creators"""
+    name = request.query_params.get('name', '')
+    creators = UserCreators.objects.filter(name__icontains=name)
+    serializer = UserCreatorSerializer(creators, many=True)
+    return ApiResponse(creators=serializer.data)
+
+@api_view(['POST'])
+def user_creator_add(request):
+    """Add a new user creator"""
+    user_id = request.headers.get('X-User-ID') or request.data.get('user_id')
+    if not user_id:
+        return Response({'status': 'error', 'message': 'Unauthorized'}, status=401)
+    
+    data = request.data
+    creator = UserCreators.objects.create(
+        user_id=user_id,
+        link=data.get('link'),
+        name=data.get('name', 'New Creator'),
+        icon=data.get('icon'),
+        followers=data.get('followers', 0),
+        description=data.get('description', ''),
+        created_at=timezone.now(),
+        updated_at=timezone.now()
+    )
+    return ApiResponse(creator=UserCreatorSerializer(creator).data)
+
+@api_view(['PATCH'])
+def user_creator_update(request, uuid):
+    """Update a user creator"""
+    creator = UserCreators.objects.filter(uuid=uuid).first()
+    if not creator:
+        return ApiResponse(error="Creator not found", status=404)
+    
+    data = request.data
+    for field in ['name', 'link', 'icon', 'followers', 'description']:
+        if field in data:
+            setattr(creator, field, data[field])
+    
+    creator.updated_at = timezone.now()
+    creator.save()
+    return ApiResponse(creator=UserCreatorSerializer(creator).data)
+
+@api_view(['DELETE'])
+def user_creator_delete(request, uuid):
+    """Delete a user creator"""
+    creator = UserCreators.objects.filter(uuid=uuid).first()
+    if not creator:
+        return ApiResponse(error="Creator not found", status=404)
+    creator.delete()
+    return ApiResponse(message="Creator deleted successfully")
+
+# ============================================================================
+# EDITOR ENDPOINTS
+# ============================================================================
+
+@api_view(['GET'])
+def editor_index(request):
+    """Search and list editors"""
+    search = request.query_params.get('search', '')
+    editors = Users.objects.filter(account_type='editor', active=1)
+    if search:
+        editors = editors.filter(name__icontains=search) | editors.filter(username__icontains=search)
+    
+    serializer = UserSerializer(editors, many=True)
+    return ApiResponse(editors=serializer.data)
+
+@api_view(['GET'])
+def editor_get(request, username):
+    """Get editor details by username"""
+    editor = Users.objects.filter(username=username, account_type='editor').first()
+    if not editor:
+        return ApiResponse(error="Editor not found", status=404)
+    
+    return ApiResponse(editor=UserSerializer(editor).data)
+
+@api_view(['GET'])
+def editor_projects(request, username):
+    """Get editor projects"""
+    editor = Users.objects.filter(username=username).first()
+    if not editor:
+        return ApiResponse(error="User not found", status=404)
+    
+    projects = UserProjects.objects.filter(user=editor)
+    serializer = UserProjectSerializer(projects, many=True)
+    return ApiResponse(projects=serializer.data)
+
+@api_view(['GET'])
+def editor_creators(request, username):
+    """Get creators associated with an editor"""
+    editor = Users.objects.filter(username=username).first()
+    if not editor:
+        return ApiResponse(error="User not found", status=404)
+    
+    creators = UserCreators.objects.filter(user=editor)
+    serializer = UserCreatorSerializer(creators, many=True)
+    return ApiResponse(creators=serializer.data)
+
+@api_view(['GET'])
+def editor_reviews(request, username):
+    """Get editor reviews (Mocked)"""
+    return ApiResponse(reviews=[], rating=0, average=0)
+
+# ============================================================================
+# PROJECT APPLICATION ENDPOINTS
+# ============================================================================
+
+@api_view(['GET'])
+def project_application_index(request):
+    """List project applications"""
+    user_id = request.headers.get('X-User-ID') or request.query_params.get('user_id')
+    if not user_id:
+        return Response({'status': 'error', 'message': 'Unauthorized'}, status=401)
+    
+    applications = ProjectApplications.objects.filter(user_id=user_id)
+    serializer = ProjectApplicationSerializer(applications, many=True)
+    return ApiResponse(project_applications=serializer.data)
+
+@api_view(['GET'])
+def project_application_get(request, uuid):
+    """Get project application by UUID"""
+    application = ProjectApplications.objects.filter(uuid=uuid).first()
+    if not application:
+        return ApiResponse(error="Application not found", status=404)
+    
+    return ApiResponse(project_application=ProjectApplicationSerializer(application).data)
+
+@api_view(['POST'])
+def project_application_store(request):
+    """Store project application"""
+    user_id = request.headers.get('X-User-ID') or request.data.get('user_id')
+    if not user_id:
+        return Response({'status': 'error', 'message': 'Unauthorized'}, status=401)
+    
+    data = request.data
+    application = ProjectApplications.objects.create(
+        uuid=str(uuid_lib.uuid4()),
+        user_id=user_id,
+        project_id=data.get('project_id'),
+        note=data.get('note'),
+        status='pending',
+        created_at=timezone.now(),
+        updated_at=timezone.now()
+    )
+    return ApiResponse(application=ProjectApplicationSerializer(application).data)
+
+@api_view(['POST', 'PATCH'])
+def project_application_update(request, uuid):
+    """Update project application"""
+    application = ProjectApplications.objects.filter(uuid=uuid).first()
+    if not application:
+        return ApiResponse(error="Application not found", status=404)
+    
+    status = request.data.get('status')
+    if status:
+        application.status = status
+        application.updated_at = timezone.now()
+        application.save()
+    
+    return ApiResponse(project_application=ProjectApplicationSerializer(application).data)
+
+@api_view(['POST'])
+def project_application_create_note(request, uuid):
+    """Create a note for an application"""
+    user_id = request.headers.get('X-User-ID') or request.data.get('user_id')
+    application = ProjectApplications.objects.filter(uuid=uuid).first()
+    if not application:
+        return ApiResponse(error="Application not found", status=404)
+    
+    note = ProjectApplicationNotes.objects.create(
+        uuid=str(uuid_lib.uuid4()),
+        project_application=application,
+        user_id=user_id,
+        note=request.data.get('note'),
+        created_at=timezone.now(),
+        updated_at=timezone.now()
+    )
+    return ApiResponse(note=ProjectApplicationNoteSerializer(note).data)
+
+@api_view(['DELETE'])
+def project_application_delete_note(request, uuid):
+    """Delete an application note"""
+    note = ProjectApplicationNotes.objects.filter(uuid=uuid).first()
+    if not note:
+        return ApiResponse(error="Note not found", status=404)
+    note.delete()
+    return ApiResponse(message="Note deleted successfully")
+
+@api_view(['POST'])
+def project_application_send_rejection_email(request):
+    """Send rejection email (Mocked)"""
+    return ApiResponse(message="Rejection email sent successfully")
+
+# ============================================================================
+# PROJECT SCREENING QUESTION ENDPOINTS
+# ============================================================================
+
+@api_view(['GET'])
+def project_screening_question_index(request, project_uuid):
+    """List screening questions for a project"""
+    project = Projects.objects.filter(uuid=project_uuid).first()
+    if not project:
+        return ApiResponse(error="Project not found", status=404)
+    
+    questions = ProjectScreeningQuestions.objects.filter(project=project)
+    serializer = ProjectScreeningQuestionSerializer(questions, many=True)
+    return ApiResponse(questions=serializer.data)
+
+@api_view(['POST'])
+def project_screening_question_store(request, project_uuid):
+    """Store a new screening question"""
+    project = Projects.objects.filter(uuid=project_uuid).first()
+    if not project:
+        return ApiResponse(error="Project not found", status=404)
+    
+    data = request.data
+    question_type = QuestionTypes.objects.filter(uuid=data.get('question_type')).first()
+    
+    question = ProjectScreeningQuestions.objects.create(
+        uuid=str(uuid_lib.uuid4()),
+        project=project,
+        question_type=question_type,
+        question=data.get('question'),
+        options=data.get('options'),
+        required=data.get('required', 0),
+        created_at=timezone.now(),
+        updated_at=timezone.now()
+    )
+    return ApiResponse(question=ProjectScreeningQuestionSerializer(question).data)
+
+@api_view(['GET'])
+def project_screening_question_show(request, project_uuid, question_uuid):
+    """Show a screening question"""
+    question = ProjectScreeningQuestions.objects.filter(uuid=question_uuid).first()
+    if not question:
+        return ApiResponse(error="Question not found", status=404)
+    return ApiResponse(question=ProjectScreeningQuestionSerializer(question).data)
+
+@api_view(['PATCH', 'PUT'])
+def project_screening_question_update(request, project_uuid, question_uuid):
+    """Update a screening question"""
+    question = ProjectScreeningQuestions.objects.filter(uuid=question_uuid).first()
+    if not question:
+        return ApiResponse(error="Question not found", status=404)
+    
+    data = request.data
+    for field in ['question', 'options', 'required']:
+        if field in data:
+            setattr(question, field, data[field])
+    
+    question.updated_at = timezone.now()
+    question.save()
+    return ApiResponse(question=ProjectScreeningQuestionSerializer(question).data)
+
+@api_view(['DELETE'])
+def project_screening_question_destroy(request, project_uuid, question_uuid):
+    """Delete a screening question"""
+    question = ProjectScreeningQuestions.objects.filter(uuid=question_uuid).first()
+    if not question:
+        return ApiResponse(error="Question not found", status=404)
+    question.delete()
+    return ApiResponse(message="Question deleted successfully")
+
+# ============================================================================
+# USER SOCIAL ENDPOINTS
+# ============================================================================
+
+@api_view(['GET'])
+def user_social_index(request):
+    """List user social accounts"""
+    user_id = request.headers.get('X-User-ID') or request.query_params.get('user_id')
+    if not user_id:
+        return Response({'status': 'error', 'message': 'Unauthorized'}, status=401)
+    
+    socials = UserSocials.objects.filter(user_id=user_id)
+    result = {}
+    for social in socials:
+        result[social.platform] = UserSocialSerializer(social).data
+    
+    return ApiResponse(socials=result)
+
+@api_view(['POST'])
+def user_social_create(request):
+    """Add a new social account"""
+    user_id = request.headers.get('X-User-ID') or request.data.get('user_id')
+    if not user_id:
+        return Response({'status': 'error', 'message': 'Unauthorized'}, status=401)
+    
+    data = request.data
+    social = UserSocials.objects.create(
+        user_id=user_id,
+        platform=data.get('provider'),
+        access_token=data.get('access_token'),
+        refresh_token=data.get('refresh_token'),
+        created_at=timezone.now(),
+        updated_at=timezone.now()
+    )
+    return ApiResponse(socials=UserSocialSerializer(social).data)
+
+@api_view(['DELETE'])
+def user_social_delete(request, uuid):
+    """Delete a social account"""
+    social = UserSocials.objects.filter(uuid=uuid).first()
+    if not social:
+        return ApiResponse(error="Social account not found", status=404)
+    social.delete()
+    return ApiResponse(message="Social account deleted successfully")
+
+@api_view(['GET'])
+def user_social_content_topics(request):
+    """List content topics for social accounts"""
+    topics = ContentTopics.objects.filter(active=1)
+    serializer = ContentTopicSerializer(topics, many=True)
+    return ApiResponse(topics=serializer.data)
+
+# ============================================================================
+# USER PAYMENT ENDPOINTS
+# ============================================================================
+
+@api_view(['GET'])
+def user_payment_index(request):
+    """List user payment accounts"""
+    user_id = request.headers.get('X-User-ID') or request.query_params.get('user_id')
+    if not user_id:
+        return Response({'status': 'error', 'message': 'Unauthorized'}, status=401)
+    
+    payments = UserPayments.objects.filter(user_id=user_id)
+    result = {}
+    for payment in payments:
+        result[payment.gateway] = UserPaymentSerializer(payment).data
+        
+    return ApiResponse(payments=result)
+
+@api_view(['POST'])
+def user_payment_create(request):
+    """Add a new payment account"""
+    user_id = request.headers.get('X-User-ID') or request.data.get('user_id')
+    if not user_id:
+        return Response({'status': 'error', 'message': 'Unauthorized'}, status=401)
+    
+    data = request.data
+    payment = UserPayments.objects.create(
+        user_id=user_id,
+        gateway=data.get('gateway'),
+        authorization_code=data.get('authorization_code'),
+        created_at=timezone.now(),
+        updated_at=timezone.now()
+    )
+    return ApiResponse(payments=UserPaymentSerializer(payment).data)
+
+@api_view(['DELETE'])
+def user_payment_delete(request, uuid):
+    """Delete a payment account"""
+    payment = UserPayments.objects.filter(uuid=uuid).first()
+    if not payment:
+        return ApiResponse(error="Payment account not found", status=404)
+    payment.delete()
+    return ApiResponse(message="Payment account deleted successfully")
+
+# ============================================================================
+# CUSTOMER ENDPOINTS
+# ============================================================================
+
+@api_view(['GET'])
+def customer_get_by_user(request):
+    """Get customer information for the current user"""
+    user_id = request.headers.get('X-User-ID') or request.query_params.get('user_id')
+    if not user_id:
+        return Response({'status': 'error', 'message': 'Unauthorized'}, status=401)
+    
+    customer = Customers.objects.filter(user_id=user_id).first()
+    # Mock current subscription for now
+    subscription = {
+        'is_active': True,
+        'plan': 'Pro',
+        'current_period_end': (timezone.now() + timezone.timedelta(days=30)).isoformat()
+    }
+    
+    return ApiResponse(
+        customer=CustomerSerializer(customer).data if customer else None,
+        subscription=subscription
+    )
+
+@api_view(['POST'])
+def customer_upgrade(request):
+    """Upgrade customer plan"""
+    user_id = request.headers.get('X-User-ID') or request.data.get('user_id')
+    if not user_id:
+        return Response({'status': 'error', 'message': 'Unauthorized'}, status=401)
+    
+    # Mock upgrade result
+    return ApiResponse(
+        message="Upgrade initiated",
+        result={
+            'checkout_url': 'https://checkout.stripe.com/mock',
+            'transaction': {'id': 'txn_mock', 'amount': 100}
+        }
+    )
+
+@api_view(['POST'])
+def customer_generate_subscription_link(request):
+    """Generate Stripe subscription management link"""
+    return ApiResponse(url="https://billing.stripe.com/mock")
+
+@api_view(['POST'])
+def customer_stop_email_webhook(request):
+    """Webhook to stop customer emails"""
+    email = request.data.get('from', '')
+    return ApiResponse(email=email, message="Email webhook processed")
+
+@api_view(['POST'])
+def customer_update_expiry_from_stripe(request):
+    """Update customer expiry date from Stripe webhook"""
+    user_id = request.data.get('user_id')
+    expired_at = request.data.get('expired_at')
+    
+    customer = Customers.objects.filter(user_id=user_id).first()
+    if not customer:
+        return ApiResponse(error=f"No customer found for user_id: {user_id}", status=404)
+        
+    customer.expired_at = expired_at
+    customer.updated_at = timezone.now()
+    customer.save()
+    
+    return ApiResponse(
+        message="Customer expiry date updated successfully.",
+        user_id=user_id,
+        expired_at=expired_at
     )

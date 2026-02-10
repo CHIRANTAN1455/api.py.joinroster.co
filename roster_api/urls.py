@@ -8,8 +8,21 @@ from .views import (
     profile_jobtypes, profile_contentverticals, profile_contentverticals_new,
     profile_platforms, profile_softwares, profile_equipments,
     profile_creativestyles, profile_social,
-    content_forms_index, project_types_index, reasons_index, referrals_index,
-    location_index, location_get
+    location_index, location_get,
+    user_project_index, user_project_public_index, user_project_add,
+    user_project_update, user_project_delete, user_project_info,
+    project_index, project_public_index, project_get, project_store,
+    project_update, project_status_update,
+    matching_index, matching_get, matching_store, matching_update, matching_editor_update,
+    editor_index, editor_get, editor_projects, editor_creators, editor_reviews,
+    project_application_index, project_application_get, project_application_store,
+    project_application_update, project_application_create_note,
+    project_application_delete_note, project_application_send_rejection_email,
+    project_screening_question_index, project_screening_question_store,
+    project_screening_question_show, project_screening_question_update,
+    project_screening_question_destroy,
+    customer_get_by_user, customer_upgrade, customer_generate_subscription_link,
+    customer_stop_email_webhook, customer_update_expiry_from_stripe
 )
 from . import views # Keep this for views.test_api
 
@@ -125,4 +138,57 @@ urlpatterns = [
     path('user/verification/link/add', views.user_verification_link_add, name='user_verification_link_add'),
     path('user/verification/link/addMany', views.user_verification_link_add_many, name='user_verification_link_add_many'),
     path('user/verification/link/<uuid>/delete', views.user_verification_link_delete, name='user_verification_link_delete'),
+
+    # User Project Endpoints
+    path('userproject', user_project_index, name='user_project_index'),
+    path('userproject/public', user_project_public_index, name='user_project_public_index'),
+    path('userproject/add', user_project_add, name='user_project_add'),
+    path('userproject/<uuid>/update', user_project_update, name='user_project_update'),
+    path('userproject/<uuid>', user_project_delete, name='user_project_delete'),
+    path('userproject/info', user_project_info, name='user_project_info'),
+
+    # Project Endpoints
+    path('project', project_index, name='project_index'),
+    path('project/public', project_public_index, name='project_public_index'),
+    path('project/store', project_store, name='project_store'),
+    path('project/<uuid>', project_get, name='project_get'),
+    path('project/<uuid>/update', project_update, name='project_update'),
+    path('project/<uuid>/status', project_status_update, name='project_status_update'),
+
+    # Matching Endpoints
+    path('matching', matching_index, name='matching_index'),
+    path('matching/<uuid>', matching_get, name='matching_get'),
+    path('matching/store', matching_store, name='matching_store'),
+    path('matching/<uuid>/update', matching_update, name='matching_update'),
+    path('matching/editor/update', matching_editor_update, name='matching_editor_update'),
+
+    # Editor Endpoints
+    path('editors', editor_index, name='editor_index'),
+    path('editor/<username>', editor_get, name='editor_get'),
+    path('editor/<username>/projects', editor_projects, name='editor_projects'),
+    path('editor/<username>/creators', editor_creators, name='editor_creators'),
+    path('editor/<username>/reviews', editor_reviews, name='editor_reviews'),
+
+    # Project Application Endpoints
+    path('project/application', project_application_index, name='project_application_index'),
+    path('project/application/<uuid>', project_application_get, name='project_application_get'),
+    path('project/application/store', project_application_store, name='project_application_store'),
+    path('project/application/<uuid>/update', project_application_update, name='project_application_update'),
+    path('project/application/<uuid>/note', project_application_create_note, name='project_application_create_note'),
+    path('project/application/note/<uuid>', project_application_delete_note, name='project_application_delete_note'),
+    path('project/application/rejection/email', project_application_send_rejection_email, name='project_application_send_rejection_email'),
+
+    # Project Screening Question Endpoints
+    path('project/<project_uuid>/screening-questions', project_screening_question_index, name='project_screening_question_index'),
+    path('project/<project_uuid>/screening-questions/store', project_screening_question_store, name='project_screening_question_store'),
+    path('project/<project_uuid>/screening-questions/<question_uuid>', project_screening_question_show, name='project_screening_question_show'),
+    path('project/<project_uuid>/screening-questions/<question_uuid>/update', project_screening_question_update, name='project_screening_question_update'),
+    path('project/<project_uuid>/screening-questions/<question_uuid>/delete', project_screening_question_destroy, name='project_screening_question_destroy'),
+
+    # Customer Endpoints
+    path('customer/me', customer_get_by_user, name='customer_get_by_user'),
+    path('customer/upgrade', customer_upgrade, name='customer_upgrade'),
+    path('customer/subscription-link', customer_generate_subscription_link, name='customer_generate_subscription_link'),
+    path('customer/email-stop-webhook', customer_stop_email_webhook, name='customer_stop_email_webhook'),
+    path('customer/stripe-expiry-update', customer_update_expiry_from_stripe, name='customer_update_expiry_from_stripe'),
 ]

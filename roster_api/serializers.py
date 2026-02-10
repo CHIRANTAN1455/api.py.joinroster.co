@@ -9,7 +9,10 @@ from .models import (
     ContentForms, Reasons, Referrals, Otps, PersonalAccessTokens,
     UserSocials, UserPayments, ContentTopics, UserSoftware, ProjectApplications,
     ProjectApplicationNotes, ProjectScreeningAnswers, ProjectScreeningQuestions,
-    CustomScreeningQuestions, QuestionTypes, UserVerificationLinks
+    CustomScreeningQuestions, QuestionTypes, UserVerificationLinks,
+    Projects, Matchings, MatchingEditors, MatchingSkills, MatchingPlatforms,
+    MatchingSoftware, MatchingContentVerticals, MatchingCreativeStyles,
+    MatchingJobTypes
 )
 
 
@@ -216,4 +219,76 @@ class QuestionTypeSerializer(serializers.ModelSerializer):
 class UserVerificationLinkSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserVerificationLinks
+        fields = '__all__'
+
+
+class ProjectSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Projects
+        fields = '__all__'
+
+
+class MatchingSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Matchings
+        fields = '__all__'
+
+
+class MatchingEditorSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MatchingEditors
+        fields = '__all__'
+
+
+class MatchingSkillSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MatchingSkills
+        fields = '__all__'
+
+
+class MatchingPlatformSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MatchingPlatforms
+        fields = '__all__'
+
+
+class MatchingSoftwareSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MatchingSoftware
+        fields = '__all__'
+
+
+class MatchingContentVerticalSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MatchingContentVerticals
+        fields = '__all__'
+
+
+class MatchingCreativeStyleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MatchingCreativeStyles
+        fields = '__all__'
+
+
+class MatchingJobTypeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MatchingJobTypes
+        fields = '__all__'
+
+
+class CustomerSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Customers
+        fields = '__all__'
+
+
+class PaymentTypeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PaymentTypes
+        fields = '__all__'
+
+
+class PaymentStatusSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PaymentStatuses
         fields = '__all__'
