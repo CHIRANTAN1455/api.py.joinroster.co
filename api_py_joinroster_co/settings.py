@@ -45,10 +45,20 @@ INSTALLED_APPS = [
     'corsheaders',
     'rest_framework',
     'roster_api',
+    'drf_spectacular',
 ]
 
 REST_FRAMEWORK = {
-    'EXCEPTION_HANDLER': 'roster_api.exceptions.custom_exception_handler'
+    'EXCEPTION_HANDLER': 'roster_api.exceptions.custom_exception_handler',
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+}
+
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'Roster API',
+    'DESCRIPTION': 'Ported Roster API from Laravel to Django',
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
+    # OTHER SETTINGS
 }
 
 MIDDLEWARE = [
