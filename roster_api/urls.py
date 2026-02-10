@@ -27,7 +27,8 @@ from .views import (
     chat_init, chat_init_public, chat_get_received_messages, chat_update_message,
     favourite_index, favourite_store, profile_visit_store,
     matching_get_by_project_id, matching_public_create, matching_get_by_token,
-    matching_create_from_favorite_creators, matching_admin_update
+    matching_create_from_favorite_creators, matching_admin_update,
+    content_forms_index, project_types_index, reasons_index, referrals_index
 )
 from . import views # Keep this for views.test_api
 
@@ -128,15 +129,6 @@ urlpatterns = [
     path('user/creator/username/<username>', views.user_creator_get_by_username, name='user_creator_get_by_username'),
     path('user/creator/group/create', views.user_creator_create_group, name='user_creator_create_group'),
     path('user/creator/search/public', views.user_creator_search_public, name='user_creator_search_public'),
-    
-    # Project Application Endpoints
-    path('project/application', views.project_application_index, name='project_application_index'),
-    path('project/application/<uuid>', views.project_application_get, name='project_application_get'),
-    path('project/application/store', views.project_application_store, name='project_application_store'),
-    path('project/application/<uuid>/update', views.project_application_update, name='project_application_update'),
-    path('project/application/<uuid>/note', views.project_application_create_note, name='project_application_create_note'),
-    path('project/application/note/<uuid>', views.project_application_delete_note, name='project_application_delete_note'),
-    path('project/application/rejection/email', views.project_application_send_rejection_email, name='project_application_send_rejection_email'),
     
     # User Verification Link Endpoints
     path('user/verification/link', views.user_verification_link_index, name='user_verification_link_index'),
