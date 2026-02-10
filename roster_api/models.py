@@ -327,6 +327,7 @@ class EmailNotificationLogs(models.Model):
     id = models.BigAutoField(primary_key=True)
     user = models.ForeignKey('Users', models.DO_NOTHING)
     email_notification = models.ForeignKey('EmailNotifications', models.DO_NOTHING)
+    project_id = models.BigIntegerField(blank=True, null=True)
     created_at = models.DateTimeField(blank=True, null=True)
     updated_at = models.DateTimeField(blank=True, null=True)
     deleted_at = models.DateTimeField(blank=True, null=True)
@@ -1452,3 +1453,18 @@ class UserFavourites(models.Model):
     class Meta:
         managed = False
         db_table = 'user_favourites'
+
+class Setting(models.Model):
+    id = models.BigAutoField(primary_key=True)
+    type = models.CharField(max_length=255, blank=True, null=True)
+    element = models.CharField(max_length=255, blank=True, null=True)
+    label = models.CharField(max_length=255, blank=True, null=True)
+    key = models.CharField(max_length=255, blank=True, null=True)
+    value = models.TextField(blank=True, null=True)
+    options = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(blank=True, null=True)
+    updated_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = 'settings'
