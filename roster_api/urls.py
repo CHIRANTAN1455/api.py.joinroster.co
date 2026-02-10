@@ -22,7 +22,12 @@ from .views import (
     project_screening_question_show, project_screening_question_update,
     project_screening_question_destroy,
     customer_get_by_user, customer_upgrade, customer_generate_subscription_link,
-    customer_stop_email_webhook, customer_update_expiry_from_stripe
+    customer_stop_email_webhook, customer_update_expiry_from_stripe,
+    chat_index, chat_get, chat_message, chat_create_custom_message,
+    chat_init, chat_init_public, chat_get_received_messages, chat_update_message,
+    favourite_index, favourite_store, profile_visit_store,
+    matching_get_by_project_id, matching_public_create, matching_get_by_token,
+    matching_create_from_favorite_creators, matching_admin_update
 )
 from . import views # Keep this for views.test_api
 
@@ -191,4 +196,28 @@ urlpatterns = [
     path('customer/subscription-link', customer_generate_subscription_link, name='customer_generate_subscription_link'),
     path('customer/email-stop-webhook', customer_stop_email_webhook, name='customer_stop_email_webhook'),
     path('customer/stripe-expiry-update', customer_update_expiry_from_stripe, name='customer_update_expiry_from_stripe'),
+
+    # Chat Endpoints
+    path('chat', chat_index, name='chat_index'),
+    path('chat/<uuid>', chat_get, name='chat_get'),
+    path('chat/<uuid>/message', chat_message, name='chat_message'),
+    path('chat/custom-message', chat_create_custom_message, name='chat_create_custom_message'),
+    path('chat/init', chat_init, name='chat_init'),
+    path('chat/init-public', chat_init_public, name='chat_init_public'),
+    path('chat/received-messages', chat_get_received_messages, name='chat_get_received_messages'),
+    path('chat/message/<id>/update', chat_update_message, name='chat_update_message'),
+
+    # Favourite Endpoints
+    path('favourite', favourite_index, name='favourite_index'),
+    path('favourite/store', favourite_store, name='favourite_store'),
+
+    # Profile Visit Endpoints
+    path('profile-visit/store', profile_visit_store, name='profile_visit_store'),
+
+    # Additional Matching Endpoints
+    path('matching/project/<project_uuid>', matching_get_by_project_id, name='matching_get_by_project_id'),
+    path('matching/public-create', matching_public_create, name='matching_public_create'),
+    path('matching/token/<token>', matching_get_by_token, name='matching_get_by_token'),
+    path('matching/create-from-favourites', matching_create_from_favorite_creators, name='matching_create_from_favorite_creators'),
+    path('matching/admin/<id>/update', matching_admin_update, name='matching_admin_update'),
 ]

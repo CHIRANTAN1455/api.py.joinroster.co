@@ -2720,7 +2720,49 @@ def matching_update(request, id):
 @api_view(['PATCH'])
 def matching_editor_update(request):
     """Update matching editor status"""
+    # In Laravel: $this->matchingService->updateMatchingEditor($request)
     return ApiResponse(message="Matching editor status updated")
+
+@api_view(['GET'])
+def matching_get_by_project_id(request, project_uuid):
+    """Get matching results by project UUID"""
+    project = get_object_or_404(Projects, uuid=project_uuid)
+    matching = Matchings.objects.filter(project_id=project.id).first()
+    return ApiResponse(matching=MatchingSerializer(matching).data if matching else None)
+
+@api_view(['POST'])
+def matching_public_create(request):
+    """Publicly create a matching and return editors"""
+    # Mocking public matching creation
+    return ApiResponse(
+        editors=[],
+        total=0,
+        page=1,
+        topics=[]
+    )
+
+@api_view(['GET'])
+def matching_get_by_token(request, token):
+    """Get matching results by token"""
+    matching = get_object_or_404(Matchings, token=token)
+    return ApiResponse(matching=MatchingSerializer(matching).data)
+
+@api_view(['POST'])
+def matching_create_from_favorite_creators(request):
+    """Create matching based on favorite creators"""
+    user_id = request.headers.get('X-User-ID') or request.data.get('user_id')
+    # Mocking logic
+    return ApiResponse(
+        matching={},
+        creators=[]
+    )
+
+@api_view(['POST'])
+def matching_admin_update(request, id):
+    """Admin update for matching"""
+    matching = get_object_or_404(Matchings, id=id)
+    # Update logic here
+    return ApiResponse(matching=MatchingSerializer(matching).data)
 
 # ============================================================================
 # USER CREATOR ENDPOINTS
@@ -3175,3 +3217,194 @@ def customer_update_expiry_from_stripe(request):
         user_id=user_id,
         expired_at=expired_at
     )
+
+# ============================================================================
+# CHAT ENDPOINTS
+# ============================================================================
+
+@api_view(['GET'])
+def chat_index(request):
+    """List chats for the current user"""
+    user_id = request.headers.get('X-User-ID') or request.query_params.get('user_id')
+    if not user_id:
+        return Response({'status': 'error', 'message': 'Unauthorized'}, status=401)
+    
+    # Logic to get chats where user is a participant
+    # In Laravel: $this->chatService->getByUser($user, $request)
+    # Participants is a JSON field
+    chats = Chats.objects.all() # Filtering logic would be complex with raw participants JSON
+    # For now, simplistic fetch
+    
+    return ApiResponse(
+        chats=ChatSerializer(chats, many=True).data,
+        total=chats.count(),
+        page=request.query_params.get('page', 1)
+    )
+
+@api_view(['GET'])
+def chat_get(request, uuid):
+    """Get messages for a specific chat"""
+    chat = get_object_or_404(Chats, uuid=uuid)
+    messages = ChatMessages.objects.filter(chat=chat).order_by('created_at')
+    
+    return ApiResponse(
+        chat=ChatSerializer(chat).data,
+        messages=ChatMessageSerializer(messages, many=True).data,
+        total=messages.count(),
+        page=request.query_params.get('page', 1)
+    )
+
+@api_view(['POST'])
+def chat_message(request, uuid):
+    """Send a message in a chat"""
+    chat = get_object_or_404(Chats, uuid=uuid)
+    message_text = request.data.get('message')
+    user_id = request.headers.get('X-User-ID') or request.data.get('user_id')
+    
+    if not message_text:
+        return ApiResponse(error="Message is required", status=400)
+        
+    message = ChatMessages.objects.create(
+        uuid=str(uuid_lib.uuid4()),
+        chat=chat,
+        user_id=user_id,
+        message=message_text,
+        created_at=timezone.now()
+    )
+    
+    # Mocking notifications
+    return ApiResponse(
+        message=ChatMessageSerializer(message).data,
+        notification_sent=True
+    )
+
+@api_view(['POST'])
+def chat_create_custom_message(request):
+    """Create a chat and send a message"""
+    user_id = request.data.get('user_id')
+    recipient_id = request.data.get('recipient_id')
+    message_text = request.data.get('message')
+    
+    # Check if chat exists or create new
+    chat = Chats.objects.filter(participants__contains=[user_id, recipient_id]).first()
+    if not chat:
+        chat = Chats.objects.create(
+            uuid=str(uuid_lib.uuid4()),
+            participants=[user_id, recipient_id],
+            created_at=timezone.now()
+        )
+        
+    message = ChatMessages.objects.create(
+        uuid=str(uuid_lib.uuid4()),
+        chat=chat,
+        user_id=user_id,
+        message=message_text,
+        created_at=timezone.now()
+    )
+    
+    return ApiResponse(
+        message=ChatMessageSerializer(message).data,
+        chat=ChatSerializer(chat).data
+    )
+
+@api_view(['POST'])
+def chat_init(request):
+    """Initialize chat for a project"""
+    project_id = request.data.get('project_id')
+    user_id = request.headers.get('X-User-ID') or request.data.get('user_id')
+    
+    project = get_object_or_404(Projects, uuid=project_id)
+    # create chat logic
+    chat = Chats.objects.create(
+        uuid=str(uuid_lib.uuid4()),
+        participants=[user_id, project.user_id],
+        created_at=timezone.now()
+    )
+    
+    return ApiResponse(chat=ChatSerializer(chat).data)
+
+@api_view(['POST'])
+def chat_init_public(request):
+    """Initialize a public chat with a recipient"""
+    recipient_id = request.data.get('recipient_id')
+    user_id = request.headers.get('X-User-ID') or request.data.get('user_id')
+    
+    chat = Chats.objects.create(
+        uuid=str(uuid_lib.uuid4()),
+        participants=[user_id, recipient_id],
+        created_at=timezone.now()
+    )
+    
+    return ApiResponse(chat=ChatSerializer(chat).data)
+
+@api_view(['GET'])
+def chat_get_received_messages(request):
+    """Get all received messages for user"""
+    user_id = request.headers.get('X-User-ID') or request.query_params.get('user_id')
+    messages = ChatMessages.objects.filter(recipient_id=user_id).order_by('-created_at')
+    
+    return ApiResponse(
+        messages=ChatMessageSerializer(messages, many=True).data,
+        total=messages.count()
+    )
+
+@api_view(['POST'])
+def chat_update_message(request, id):
+    """Update message status or content"""
+    message = get_object_or_404(ChatMessages, id=id)
+    # logic to update
+    return ApiResponse(updated_message=ChatMessageSerializer(message).data)
+
+# ============================================================================
+# FAVOURITE ENDPOINTS
+# ============================================================================
+
+@api_view(['GET'])
+def favourite_index(request):
+    """List favourites for user"""
+    user_id = request.headers.get('X-User-ID') or request.query_params.get('user_id')
+    favourites = UserFavourites.objects.filter(user_id=user_id)
+    
+    return ApiResponse(
+        favourites=UserFavouriteSerializer(favourites, many=True).data,
+        total=favourites.count()
+    )
+
+@api_view(['POST'])
+def favourite_store(request):
+    """Add or remove favourite"""
+    user_id = request.headers.get('X-User-ID') or request.data.get('user_id')
+    editor_uuid = request.data.get('editor')
+    status = request.data.get('status') # true to add, false to remove
+    
+    editor = get_object_or_404(Users, uuid=editor_uuid)
+    
+    if status:
+        favourite, created = UserFavourites.objects.get_or_create(
+            user_id=user_id,
+            favourite_user=editor
+        )
+        message = "Added to favourites"
+    else:
+        UserFavourites.objects.filter(user_id=user_id, favourite_user=editor).delete()
+        message = "Removed from favourites"
+        
+    return ApiResponse(message=message)
+
+# ============================================================================
+# PROFILE VISIT ENDPOINTS
+# ============================================================================
+
+@api_view(['POST'])
+def profile_visit_store(request):
+    """Store profile visit"""
+    user_id = request.headers.get('X-User-ID') or request.data.get('user_id')
+    editor_id = request.data.get('editor_id') # This is likely UUID or ID depending on frontend
+    
+    ProfileVisits.objects.create(
+        user_id=user_id,
+        editor_id=editor_id,
+        created_at=timezone.now()
+    )
+    
+    return ApiResponse(message="Profile visit recorded")

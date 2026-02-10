@@ -1440,3 +1440,15 @@ class UserVerificationLinks(models.Model):
         managed = False
         db_table = 'user_verification_links'
         unique_together = (('user', 'link', 'deleted_at'),)
+
+
+class UserFavourites(models.Model):
+    id = models.BigAutoField(primary_key=True)
+    user = models.ForeignKey('Users', models.DO_NOTHING, related_name='userfavourites_user_set')
+    favourite_user = models.ForeignKey('Users', models.DO_NOTHING, related_name='userfavourites_favourite_user_set')
+    created_at = models.DateTimeField(blank=True, null=True)
+    updated_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = 'user_favourites'

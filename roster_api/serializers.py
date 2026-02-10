@@ -12,7 +12,7 @@ from .models import (
     CustomScreeningQuestions, QuestionTypes, UserVerificationLinks,
     Projects, Matchings, MatchingEditors, MatchingSkills, MatchingPlatforms,
     MatchingSoftware, MatchingContentVerticals, MatchingCreativeStyles,
-    MatchingJobTypes
+    MatchingJobTypes, Chats, ChatMessages, UserFavourites, ProfileVisits
 )
 
 
@@ -273,6 +273,30 @@ class MatchingCreativeStyleSerializer(serializers.ModelSerializer):
 class MatchingJobTypeSerializer(serializers.ModelSerializer):
     class Meta:
         model = MatchingJobTypes
+        fields = '__all__'
+
+
+class ChatSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Chats
+        fields = '__all__'
+
+
+class ChatMessageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ChatMessages
+        fields = '__all__'
+
+
+class UserFavouriteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserFavourites
+        fields = '__all__'
+
+
+class ProfileVisitSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProfileVisits
         fields = '__all__'
 
 
