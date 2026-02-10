@@ -28,7 +28,7 @@ from .views import (
     favourite_index, favourite_store, profile_visit_store,
     matching_get_by_project_id, matching_public_create, matching_get_by_token,
     matching_create_from_favorite_creators, matching_admin_update,
-    content_forms_index, project_types_index, reasons_index, referrals_index
+    content_forms_index, project_types_index, project_types_user_index, reasons_index, referrals_index
 )
 from . import views # Keep this for views.test_api
 
@@ -70,7 +70,7 @@ urlpatterns = [
     # Additional Index Endpoints
     path('contentforms', content_forms_index, name='content_forms_index'),
     path('projecttypes', project_types_index, name='project_types_index'),
-    path('projecttypes/<username>', project_types_index, name='project_types_index_user'),
+    path('projecttypes/<username>', project_types_user_index, name='project_types_index_user'),
     path('reasons', reasons_index, name='reasons_index'),
     path('referrals', referrals_index, name='referrals_index'),
     

@@ -1,5 +1,6 @@
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
+from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiExample
 from django.contrib.auth.hashers import make_password, check_password
 from django.utils import timezone
 import secrets
@@ -57,7 +58,13 @@ from .serializers import (
     ProjectScreeningAnswerSerializer,
     CustomScreeningQuestionSerializer,
     QuestionTypeSerializer,
-    UserVerificationLinkSerializer
+    UserVerificationLinkSerializer,
+    ContentFormSerializer,
+    ProjectTypeSerializer,
+    ChatSerializer,
+    ChatMessageSerializer,
+    UserFavouriteSerializer,
+    ProfileVisitSerializer
 )
 
 
@@ -65,6 +72,7 @@ from .serializers import (
 def test_api(request):
     return ApiResponse(message='API routes working fine!')
 
+@extend_schema(responses={200: SkillSerializer(many=True)}, operation_id="skills_list")
 @api_view(['GET'])
 def skills_index(request):
     # TODO: Implement filtering based on user type (editor vs customer)
@@ -682,17 +690,23 @@ def content_forms_index(request):
     serializer = ContentFormSerializer(content_forms, many=True)
     return ApiResponse(content_forms=serializer.data)
 
+@extend_schema(responses={200: ProjectTypeSerializer(many=True)}, operation_id="project_types_list")
 @api_view(['GET'])
-def project_types_index(request, username=None):
-    """ProjectTypes API - returns project types, optionally filtered by user"""
-    user = None
-    if username:
-        user = Users.objects.filter(username=username).first()
-    
-    # TODO: Implement getUserProjectType logic from ProjectTypeService
-    # For now, return all active project types
+def project_types_index(request):
+    """ProjectTypes API - returns all active project types"""
     project_types = ProjectTypes.objects.filter(active=1)
-    
+    serializer = ProjectTypeSerializer(project_types, many=True)
+    return ApiResponse(project_types=serializer.data)
+
+@extend_schema(responses={200: ProjectTypeSerializer(many=True)}, operation_id="project_types_by_user")
+@api_view(['GET'])
+def project_types_user_index(request, username):
+    """ProjectTypes API - returns project types for a specific user"""
+    user = Users.objects.filter(username=username).first()
+    if not user:
+        return ApiResponse(error="User not found", status=404)
+    # TODO: Implement getUserProjectType logic from ProjectTypeService
+    project_types = ProjectTypes.objects.filter(active=1)
     serializer = ProjectTypeSerializer(project_types, many=True)
     return ApiResponse(project_types=serializer.data)
 
@@ -714,6 +728,7 @@ def referrals_index(request):
     serializer = ReferralSerializer(referrals, many=True)
     return ApiResponse(referrals=serializer.data)
 
+@extend_schema(responses={200: LocationSerializer(many=True)}, operation_id="location_list")
 @api_view(['GET'])
 def location_index(request):
     """Locations API - search locations with pagination"""
@@ -734,6 +749,7 @@ def location_index(request):
     serializer = LocationSerializer(locations, many=True)
     return ApiResponse(locations=serializer.data, total=total, page=page)
 
+@extend_schema(responses={200: LocationSerializer}, operation_id="location_retrieve")
 @api_view(['GET'])
 def location_get(request, id):
     """Get single location by ID"""
@@ -1734,6 +1750,7 @@ def user_creator_delete(request, uuid):
 # PROJECT APPLICATION ENDPOINTS
 # ============================================================================
 
+@extend_schema(responses={200: ProjectApplicationSerializer(many=True)}, operation_id="project_application_list")
 @api_view(['GET'])
 def project_application_index(request):
     """List project applications"""
@@ -1769,6 +1786,7 @@ def project_application_index(request):
         page=page
     )
 
+@extend_schema(responses={200: ProjectApplicationSerializer}, operation_id="project_application_retrieve")
 @api_view(['GET'])
 def project_application_get(request, uuid):
     """Get single project application"""
@@ -2480,6 +2498,7 @@ def profile_refresh_token(request):
 # USER PROJECT ENDPOINTS
 # ============================================================================
 
+@extend_schema(responses={200: UserProjectSerializer(many=True)}, operation_id="user_project_list")
 @api_view(['GET'])
 def user_project_index(request):
     """List user projects"""
@@ -2493,6 +2512,7 @@ def user_project_index(request):
     serializer = UserProjectSerializer(projects, many=True)
     return ApiResponse(projects=serializer.data)
 
+@extend_schema(responses={200: UserProjectSerializer(many=True)}, operation_id="user_project_list_public")
 @api_view(['GET'])
 def user_project_public_index(request):
     """List public projects"""
@@ -2500,6 +2520,7 @@ def user_project_public_index(request):
     serializer = UserProjectSerializer(projects, many=True)
     return ApiResponse(projects=serializer.data)
 
+@extend_schema(responses={201: UserProjectSerializer}, operation_id="user_project_create")
 @api_view(['POST'])
 def user_project_add(request):
     """Add a new user project"""
@@ -2554,6 +2575,7 @@ def user_project_delete(request, id):
     project.delete()
     return ApiResponse(message="Project deleted successfully")
 
+@extend_schema(responses={200: dict}, operation_id="user_project_fetch_info")
 @api_view(['GET'])
 def user_project_info(request):
     """Get project info from YouTube (Mocked for now)"""
@@ -2570,6 +2592,7 @@ def user_project_info(request):
 # PROJECT ENDPOINTS (Projects model)
 # ============================================================================
 
+@extend_schema(responses={200: ProjectSerializer(many=True)}, operation_id="project_list")
 @api_view(['GET'])
 def project_index(request):
     """List projects for a user"""
@@ -2588,6 +2611,7 @@ def project_public_index(request):
     serializer = ProjectSerializer(projects, many=True)
     return ApiResponse(projects=serializer.data)
 
+@extend_schema(responses={200: ProjectSerializer}, operation_id="project_retrieve")
 @api_view(['GET'])
 def project_get(request, id):
     """Get a project by UUID"""
@@ -2657,6 +2681,7 @@ def project_status_update(request, id):
 # MATCHING ENDPOINTS
 # ============================================================================
 
+@extend_schema(responses={200: MatchingSerializer(many=True)}, operation_id="matching_list")
 @api_view(['GET'])
 def matching_index(request):
     """List matchings for a user"""
@@ -2668,6 +2693,7 @@ def matching_index(request):
     serializer = MatchingSerializer(matchings, many=True)
     return ApiResponse(matching=serializer.data)
 
+@extend_schema(responses={200: MatchingSerializer}, operation_id="matching_retrieve")
 @api_view(['GET'])
 def matching_get(request, id):
     """Get matching by UUID"""
@@ -2821,6 +2847,7 @@ def editor_reviews(request, username):
 # PROJECT SCREENING QUESTION ENDPOINTS
 # ============================================================================
 
+@extend_schema(responses={200: ProjectScreeningQuestionSerializer(many=True)}, operation_id="project_screening_question_list")
 @api_view(['GET'])
 def project_screening_question_index(request, project_uuid):
     """List screening questions for a project"""
@@ -2854,6 +2881,7 @@ def project_screening_question_store(request, project_uuid):
     )
     return ApiResponse(question=ProjectScreeningQuestionSerializer(question).data)
 
+@extend_schema(responses={200: ProjectScreeningQuestionSerializer}, operation_id="project_screening_question_retrieve")
 @api_view(['GET'])
 def project_screening_question_show(request, project_uuid, question_uuid):
     """Show a screening question"""
@@ -3007,6 +3035,7 @@ def customer_update_expiry_from_stripe(request):
 # CHAT ENDPOINTS
 # ============================================================================
 
+@extend_schema(responses={200: ChatSerializer(many=True)}, operation_id="chat_list")
 @api_view(['GET'])
 def chat_index(request):
     """List chats for the current user"""
@@ -3026,6 +3055,7 @@ def chat_index(request):
         page=request.query_params.get('page', 1)
     )
 
+@extend_schema(responses={200: ChatSerializer}, operation_id="chat_retrieve")
 @api_view(['GET'])
 def chat_get(request, uuid):
     """Get messages for a specific chat"""

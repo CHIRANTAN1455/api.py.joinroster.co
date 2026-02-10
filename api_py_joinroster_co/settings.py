@@ -70,6 +70,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'roster_api.middleware.TerminalLoggingMiddleware',
 ]
 
 ROOT_URLCONF = 'api_py_joinroster_co.urls'
