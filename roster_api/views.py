@@ -16,7 +16,9 @@ from .models import (
     MatchingSoftware, MatchingContentVerticals, MatchingCreativeStyles,
     MatchingJobTypes, ProjectApplications, ProjectApplicationNotes,
     ProjectScreeningAnswers, ProjectScreeningQuestions, CustomScreeningQuestions,
-    QuestionTypes, UserVerificationLinks
+    QuestionTypes, UserVerificationLinks, UserPricing, ProjectTypes,
+    UserJobTypePricing, UserSocialProfile, UserLanguage, UserSoftware,
+    UserEquipments, UserCreativeStyles, UserJobTypes
 )
 from .serializers import (
     SkillSerializer, 
@@ -64,7 +66,9 @@ from .serializers import (
     ChatSerializer,
     ChatMessageSerializer,
     UserFavouriteSerializer,
-    ProfileVisitSerializer
+    ProfileVisitSerializer,
+    UserContentVerticalSerializer,
+    UserSoftwareSerializer
 )
 
 

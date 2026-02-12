@@ -247,22 +247,6 @@ class CreatorVouchRequests(models.Model):
         db_table = 'creator_vouch_requests'
 
 
-class CustomScreeningQuestions(models.Model):
-    id = models.BigAutoField(primary_key=True)
-    project = models.ForeignKey('Projects', models.DO_NOTHING)
-    project_uuid = models.CharField(max_length=36, blank=True, null=True)
-    applicant_uuid = models.CharField(max_length=36, db_collation='utf8mb3_unicode_ci', blank=True, null=True)
-    question = models.TextField()
-    answer = models.TextField(blank=True, null=True)
-    is_required = models.IntegerField()
-    question_type = models.CharField(max_length=30)
-    created_at = models.DateTimeField(blank=True, null=True)
-    updated_at = models.DateTimeField(blank=True, null=True)
-
-    class Meta:
-        managed = False
-        db_table = 'custom_screening_questions'
-
 
 class Customers(models.Model):
     id = models.BigAutoField(primary_key=True)
@@ -280,26 +264,6 @@ class Customers(models.Model):
         managed = False
         db_table = 'customers'
 
-
-class EditorInvitations(models.Model):
-    id = models.BigAutoField(primary_key=True)
-    uuid = models.CharField(max_length=36)
-    referrer = models.ForeignKey('Users', models.DO_NOTHING)
-    referrer_project = models.ForeignKey('UserProjects', models.DO_NOTHING, blank=True, null=True)
-    referrer_creator = models.ForeignKey('UserCreators', models.DO_NOTHING, blank=True, null=True)
-    job_type = models.ForeignKey('JobTypes', models.DO_NOTHING, blank=True, null=True)
-    status = models.CharField(max_length=255)
-    email = models.CharField(max_length=255)
-    first_name = models.CharField(max_length=255)
-    last_name = models.CharField(max_length=255, blank=True, null=True)
-    password_reset_link = models.CharField(max_length=500, blank=True, null=True)
-    created_at = models.DateTimeField(blank=True, null=True)
-    updated_at = models.DateTimeField(blank=True, null=True)
-    deleted_at = models.DateTimeField(blank=True, null=True)
-
-    class Meta:
-        managed = False
-        db_table = 'editor_invitations'
 
 
 class EditorShortlists(models.Model):
@@ -323,37 +287,6 @@ class EditorShortlists(models.Model):
         db_table = 'editor_shortlists'
 
 
-class EmailNotificationLogs(models.Model):
-    id = models.BigAutoField(primary_key=True)
-    user = models.ForeignKey('Users', models.DO_NOTHING)
-    email_notification = models.ForeignKey('EmailNotifications', models.DO_NOTHING)
-    project_id = models.BigIntegerField(blank=True, null=True)
-    created_at = models.DateTimeField(blank=True, null=True)
-    updated_at = models.DateTimeField(blank=True, null=True)
-    deleted_at = models.DateTimeField(blank=True, null=True)
-
-    class Meta:
-        managed = False
-        db_table = 'email_notification_logs'
-
-
-class EmailNotifications(models.Model):
-    id = models.BigAutoField(primary_key=True)
-    uuid = models.CharField(max_length=36)
-    name = models.CharField(max_length=255)
-    code = models.CharField(max_length=255)
-    subject = models.CharField(max_length=255)
-    content = models.TextField()
-    tags = models.JSONField()
-    active = models.IntegerField()
-    created_at = models.DateTimeField(blank=True, null=True)
-    updated_at = models.DateTimeField(blank=True, null=True)
-    deleted_at = models.DateTimeField(blank=True, null=True)
-
-    class Meta:
-        managed = False
-        db_table = 'email_notifications'
-        unique_together = (('code', 'deleted_at'),)
 
 
 class Equipment(models.Model):
