@@ -2549,9 +2549,9 @@ def user_project_add(request):
     return ApiResponse(project=UserProjectSerializer(project).data)
 
 @api_view(['POST', 'PUT', 'PATCH'])
-def user_project_update(request, id):
+def user_project_update(request, uuid):
     """Update a user project"""
-    project = UserProjects.objects.filter(uuid=id).first()
+    project = UserProjects.objects.filter(uuid=uuid).first()
     if not project:
         return ApiResponse(error="Project not found", status=404)
     
@@ -2566,9 +2566,9 @@ def user_project_update(request, id):
     return ApiResponse(project=UserProjectSerializer(project).data)
 
 @api_view(['DELETE'])
-def user_project_delete(request, id):
+def user_project_delete(request, uuid):
     """Delete a user project"""
-    project = UserProjects.objects.filter(uuid=id).first()
+    project = UserProjects.objects.filter(uuid=uuid).first()
     if not project:
         return ApiResponse(error="Project not found", status=404)
     
@@ -2613,9 +2613,9 @@ def project_public_index(request):
 
 @extend_schema(responses={200: ProjectSerializer}, operation_id="project_retrieve")
 @api_view(['GET'])
-def project_get(request, id):
+def project_get(request, uuid):
     """Get a project by UUID"""
-    project = Projects.objects.filter(uuid=id).first()
+    project = Projects.objects.filter(uuid=uuid).first()
     if not project:
         return ApiResponse(error="Project not found", status=404)
     
@@ -2645,9 +2645,9 @@ def project_store(request):
     return ApiResponse(project=ProjectSerializer(project).data)
 
 @api_view(['PATCH'])
-def project_update(request, id):
+def project_update(request, uuid):
     """Update a project"""
-    project = Projects.objects.filter(uuid=id).first()
+    project = Projects.objects.filter(uuid=uuid).first()
     if not project:
         return ApiResponse(error="Project not found", status=404)
     
@@ -2663,9 +2663,9 @@ def project_update(request, id):
     return ApiResponse(project=ProjectSerializer(project).data)
 
 @api_view(['POST'])
-def project_status_update(request, id):
+def project_status_update(request, uuid):
     """Update project status"""
-    project = Projects.objects.filter(uuid=id).first()
+    project = Projects.objects.filter(uuid=uuid).first()
     if not project:
         return ApiResponse(error="Project not found", status=404)
     
@@ -2695,9 +2695,9 @@ def matching_index(request):
 
 @extend_schema(responses={200: MatchingSerializer}, operation_id="matching_retrieve")
 @api_view(['GET'])
-def matching_get(request, id):
+def matching_get(request, uuid):
     """Get matching by UUID"""
-    matching = Matchings.objects.filter(uuid=id).first()
+    matching = Matchings.objects.filter(uuid=uuid).first()
     if not matching:
         return ApiResponse(error="Matching not found", status=404)
     
@@ -2727,9 +2727,9 @@ def matching_store(request):
     return ApiResponse(matching=MatchingSerializer(matching).data)
 
 @api_view(['PATCH'])
-def matching_update(request, id):
+def matching_update(request, uuid):
     """Update a matching"""
-    matching = Matchings.objects.filter(uuid=id).first()
+    matching = Matchings.objects.filter(uuid=uuid).first()
     if not matching:
         return ApiResponse(error="Matching not found", status=404)
     

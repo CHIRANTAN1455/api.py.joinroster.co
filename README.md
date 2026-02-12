@@ -1,6 +1,6 @@
 # Roster Django API
 
-This is the Python/Django implementation of the Roster API, ported from the original Laravel codebase.
+This is the Backend Python/Django implementation of the Roster API
 
 ## Prerequisites
 
