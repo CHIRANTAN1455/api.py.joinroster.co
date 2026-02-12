@@ -59,6 +59,8 @@ SPECTACULAR_SETTINGS = {
     'DESCRIPTION': 'Ported Roster API from Laravel to Django',
     'VERSION': '1.0.0',
     'SERVE_INCLUDE_SCHEMA': False,
+    'FAVICON': 'https://app.joinroster.co/logo.png',
+    'LOGO': 'https://app.joinroster.co/logo.png',
     # OTHER SETTINGS
 }
 
