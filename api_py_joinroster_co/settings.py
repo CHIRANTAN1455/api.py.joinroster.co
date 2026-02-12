@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 
 from pathlib import Path
 import os
+import sys
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -148,7 +149,17 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 
+
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# Set managed=True for all models during tests so that Django creates the test database tables.
+# This is necessary because many models are introspected from a legacy DB and have managed=False.
+if 'test' in sys.argv:
+    from django.db.models.signals import class_prepared
+    def set_managed(sender, **kwargs):
+        sender._meta.managed = True
+    class_prepared.connect(set_managed)
+    print("Test mode: All models will be treated as managed.")
