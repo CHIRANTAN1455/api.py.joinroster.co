@@ -1,50 +1,74 @@
 from django.core.management.base import BaseCommand
+from roster_api.models import Users, EmailNotifications, EmailNotificationLogs, Logs
 from django.utils import timezone
-from roster_api.models import Users, EmailNotifications, EmailNotificationLogs
+from datetime import timedelta
+from roster_api.profile_helper import ProfileHelper, profile_missing_fields_day1, profile_missing_fields_day3, profile_missing_fields_day7
+import logging
+
+logger = logging.getLogger(__name__)
 
 class Command(BaseCommand):
-    help = 'Nudge users to complete their profile (Port of complete-profile:nudge)'
+    help = 'Send alerts of new jobs (Complete Profile Nudge)'
 
     def handle(self, *args, **options):
+        helper = ProfileHelper()
         now = timezone.now()
         
-        # 1. Get template
-        try:
-            template = EmailNotifications.objects.get(code='complete-profile-nudge', active=1)
-        except EmailNotifications.DoesNotExist:
-            self.stdout.write(self.style.ERROR("Template 'complete-profile-nudge' not found."))
-            return
+        job_alert_notification = EmailNotifications.objects.filter(code='complete-profile-nudge').first()
+        job_alert_id = job_alert_notification.id if job_alert_notification else 1
 
-        # 2. Find users with incomplete profiles
-        # Laravel criteria: active=1, completion_status < 100
-        incomplete_users = Users.objects.filter(
-            active=1,
-            account_type='user',
-            deleted_at__isnull=True
-        ).exclude(completion_status='100')
+        # Get all non-activated suppliers
+        # Laravel: User::where('account_type', 'editor')->whereNull('activated_at')...
+        users = Users.objects.filter(
+            account_type='editor',
+            activated_at__isnull=True,
+            deleted_at__isnull=True,
+            created_at__gte=timezone.datetime(2024, 7, 1, tzinfo=timezone.utc),
+            active=1
+        ).exclude(
+            email='business.davidbier@gmail.com'
+        )
         
-        self.stdout.write(f"Found {incomplete_users.count()} users with incomplete profiles.")
+        # whereHas('job_types')
+        users = users.filter(userjobtypes__isnull=False).distinct()
+        
+        # whereDoesntHave('user_email_unsubscriptions')
+        users = users.exclude(
+            useremailunsubscriptions__unsubscribe_all=1
+        ).exclude(
+            useremailunsubscriptions__email_notification_id=job_alert_id
+        )
 
-        for user in incomplete_users:
-            # 3. Check if already nudged recently (e.g., in the last 7 days)
-            last_nudge = EmailNotificationLogs.objects.filter(
-                user=user,
-                email_notification=template
-            ).order_by('-created_at').first()
-            
-            if last_nudge:
-                days_since = (now - last_nudge.created_at).days
-                if days_since < 7:
-                    continue
-            
-            self.stdout.write(self.style.SUCCESS(f"Nudging user: {user.email} (Status: {user.completion_status})"))
-            
-            # 4. Log notification
-            EmailNotificationLogs.objects.create(
-                user=user,
-                email_notification=template,
-                created_at=now,
-                updated_at=now
-            )
+        # Users who didn't skip setup
+        skipped_setup_user_ids = Logs.objects.filter(
+            action='Skip Setup'
+        ).values_list('user_id', flat=True)
+        
+        users_who_not_skip_setup = users.exclude(id__in=skipped_setup_user_ids)
 
-        self.stdout.write(self.style.SUCCESS("Profile completion nudges processed."))
+        for user in users_who_not_skip_setup:
+            code_nudge = f'nudge-complete-profile-user-{user.uuid}'
+            code_improve = f'nudge-activated-profile-to-improve-user-{user.uuid}'
+            
+            notif_nudge = EmailNotifications.objects.filter(code=code_nudge).first()
+            notif_improve = EmailNotifications.objects.filter(code=code_improve).first()
+
+            if not notif_improve and not notif_nudge:
+                days_since_creation = (now - user.created_at).days
+                
+                if days_since_creation >= 1:
+                    profile_status = helper.calculate_profile_completion(user)
+                    completion_percent = profile_status['complete_percent']
+                    missing_fields = profile_status['missing_fields']
+
+                    if completion_percent < 100 and len(missing_fields) >= 1:
+                        self.trigger_base_alert(user, missing_fields, helper)
+
+    def trigger_base_alert(self, user, missing_fields, helper):
+         # Helper to send email callback
+         def send_email(user, url, code, mapped_missing_fields, subject, preview):
+             # Placeholder sending email
+             self.stdout.write(f"Sending {code} to {user.email}: {subject}")
+             pass
+
+         helper.trigger_base_alert(user, missing_fields, send_email)

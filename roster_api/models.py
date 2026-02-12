@@ -1468,3 +1468,155 @@ class Setting(models.Model):
     class Meta:
         managed = False
         db_table = 'settings'
+
+
+class EditorInvitations(models.Model):
+    id = models.BigAutoField(primary_key=True)
+    uuid = models.CharField(max_length=36)
+    email = models.CharField(max_length=255)
+    first_name = models.CharField(max_length=255, blank=True, null=True)
+    last_name = models.CharField(max_length=255, blank=True, null=True)
+    referrer = models.ForeignKey('Users', models.DO_NOTHING, blank=True, null=True, db_column='referrer_id')
+    referrer_project = models.ForeignKey('UserProjects', models.DO_NOTHING, blank=True, null=True, db_column='referrer_project_id')
+    referrer_creator = models.ForeignKey('UserCreators', models.DO_NOTHING, blank=True, null=True, db_column='referrer_creator_id')
+    password_reset_link = models.CharField(max_length=500, blank=True, null=True)
+    job_type = models.ForeignKey('JobTypes', models.DO_NOTHING, blank=True, null=True, db_column='job_type_id')
+    status = models.CharField(max_length=255)
+    created_at = models.DateTimeField(blank=True, null=True)
+    updated_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = 'editor_invitations'
+
+
+class UserProjectContentTopics(models.Model):
+    id = models.BigAutoField(primary_key=True)
+    uuid = models.CharField(max_length=36, blank=True, null=True)
+    user_project = models.ForeignKey('UserProjects', models.DO_NOTHING)
+    content_topic = models.ForeignKey('ContentTopics', models.DO_NOTHING)
+    name = models.CharField(max_length=255, blank=True, null=True)
+    status = models.CharField(max_length=255)
+    created_at = models.DateTimeField(blank=True, null=True)
+    updated_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = 'user_project_content_topics'
+
+
+class UserCreatorContentTopics(models.Model):
+    id = models.BigAutoField(primary_key=True)
+    uuid = models.CharField(max_length=36, blank=True, null=True)
+    user_creator = models.ForeignKey('UserCreators', models.DO_NOTHING)
+    content_topic = models.ForeignKey('ContentTopics', models.DO_NOTHING)
+    name = models.CharField(max_length=255, blank=True, null=True)
+    status = models.CharField(max_length=255)
+    created_at = models.DateTimeField(blank=True, null=True)
+    updated_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = 'user_creator_content_topics'
+
+
+class EmailNotifications(models.Model):
+    id = models.BigAutoField(primary_key=True)
+    uuid = models.CharField(max_length=36, blank=True, null=True)
+    name = models.CharField(max_length=255)
+    code = models.CharField(max_length=255)
+    subject = models.CharField(max_length=255)
+    content = models.TextField(blank=True, null=True)
+    tags = models.JSONField(blank=True, null=True)
+    active = models.IntegerField()
+    created_at = models.DateTimeField(blank=True, null=True)
+    updated_at = models.DateTimeField(blank=True, null=True)
+    deleted_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = 'email_notifications'
+
+
+class EmailNotificationLogs(models.Model):
+    id = models.BigAutoField(primary_key=True)
+    email_notification = models.ForeignKey('EmailNotifications', models.DO_NOTHING)
+    user = models.ForeignKey('Users', models.DO_NOTHING)
+    project = models.ForeignKey('Projects', models.DO_NOTHING, blank=True, null=True)
+    created_at = models.DateTimeField(blank=True, null=True)
+    updated_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = 'email_notification_logs'
+
+
+class ProjectJobTypes(models.Model):
+    id = models.BigAutoField(primary_key=True)
+    uuid = models.CharField(max_length=36, blank=True, null=True)
+    project = models.ForeignKey('Projects', models.DO_NOTHING)
+    job_type = models.ForeignKey('JobTypes', models.DO_NOTHING)
+    starting_price = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+    pricing_type = models.CharField(max_length=255, blank=True, null=True)
+    optional = models.IntegerField(blank=True, null=True)
+    created_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = 'project_job_types'
+
+
+class UserVerifications(models.Model):
+    id = models.BigAutoField(primary_key=True)
+    uuid = models.CharField(max_length=36, blank=True, null=True)
+    user = models.ForeignKey('Users', models.DO_NOTHING)
+    attachment = models.CharField(max_length=255, blank=True, null=True)
+    status = models.CharField(max_length=255)
+    created_at = models.DateTimeField(blank=True, null=True)
+    updated_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = 'user_verifications'
+
+
+class UserEmailUnsubscriptions(models.Model):
+    id = models.BigAutoField(primary_key=True)
+    uuid = models.CharField(max_length=36, blank=True, null=True)
+    user = models.ForeignKey('Users', models.DO_NOTHING)
+    email_notification_id = models.BigIntegerField(blank=True, null=True) 
+    notification_type = models.CharField(max_length=255, blank=True, null=True)
+    created_at = models.DateTimeField(blank=True, null=True)
+    updated_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = 'user_email_unsubscriptions'
+
+
+class Transactions(models.Model):
+    id = models.BigAutoField(primary_key=True)
+    uuid = models.CharField(max_length=36, blank=True, null=True)
+    user = models.ForeignKey('Users', models.DO_NOTHING)
+    status = models.CharField(max_length=255, blank=True, null=True)
+    amount = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+    created_at = models.DateTimeField(blank=True, null=True)
+    updated_at = models.DateTimeField(blank=True, null=True)
+    
+    class Meta:
+        managed = False
+        db_table = 'transactions'
+
+
+class ReferralCodes(models.Model):
+    id = models.BigAutoField(primary_key=True)
+    uuid = models.CharField(max_length=36, blank=True, null=True)
+    user = models.ForeignKey('Users', models.DO_NOTHING)
+    code = models.CharField(max_length=255, blank=True, null=True)
+    referrer_id = models.BigIntegerField(blank=True, null=True)
+    created_at = models.DateTimeField(blank=True, null=True)
+    updated_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = 'referral_codes'
