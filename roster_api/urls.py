@@ -21,7 +21,7 @@ from .views import (
     project_screening_question_index, project_screening_question_store,
     project_screening_question_show, project_screening_question_update,
     project_screening_question_destroy,
-    customer_get_by_user, customer_upgrade, customer_generate_subscription_link,
+    customer_register, customer_get_by_user, customer_upgrade, customer_generate_subscription_link,
     customer_stop_email_webhook, customer_update_expiry_from_stripe,
     chat_index, chat_get, chat_message, chat_create_custom_message,
     chat_init, chat_init_public, chat_get_received_messages, chat_update_message,
@@ -183,6 +183,7 @@ urlpatterns = [
     path('project/<project_uuid>/screening-questions/<question_uuid>/delete', project_screening_question_destroy, name='project_screening_question_destroy'),
 
     # Customer Endpoints
+    path('customer/register', customer_register, name='customer_register'),
     path('customer/me', customer_get_by_user, name='customer_get_by_user'),
     path('customer/upgrade', customer_upgrade, name='customer_upgrade'),
     path('customer/subscription-link', customer_generate_subscription_link, name='customer_generate_subscription_link'),

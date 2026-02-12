@@ -1456,116 +1456,10 @@ def user_social_content_topics(request):
 # USER PAYMENT METHODS ENDPOINTS
 # ============================================================================
 
-@api_view(['GET'])
-def user_payment_index(request):
-    """Get all payment methods for authenticated user"""
-    from .auth_helpers import verify_access_token
-    
-    # Get user from token
-    auth_header = request.headers.get('Authorization', '')
-    if not auth_header.startswith('Bearer '):
-        return ApiResponse(error="Unauthorized", status=401)
-    
-    token = auth_header.split(' ')[1]
-    user = verify_access_token(token)
-    
-    if not user:
-        return ApiResponse(error="Unauthorized", status=401)
-    
-    # Get payment methods
-    payments = UserPayments.objects.filter(user=user, deleted_at__isnull=True)
-    
-    # Format as dict by gateway
-    result = {}
-    for payment in payments:
-        result[payment.gateway] = UserPaymentSerializer(payment).data
-    
-    return ApiResponse(
-        status='success',
-        message='Payment methods loaded successfully',
-        payments=result
-    )
+# Payment method endpoints moved to CUSTOMER ENDPOINTS section
 
-@api_view(['POST'])
-def user_payment_create(request):
-    """Add a payment method"""
-    from .auth_helpers import verify_access_token
-    
-    # Get user from token
-    auth_header = request.headers.get('Authorization', '')
-    if not auth_header.startswith('Bearer '):
-        return ApiResponse(error="Unauthorized", status=401)
-    
-    token = auth_header.split(' ')[1]
-    user = verify_access_token(token)
-    
-    if not user:
-        return ApiResponse(error="Unauthorized", status=401)
-    
-    gateway = request.data.get('gateway')
-    authorization_code = request.data.get('authorization_code')
-    
-    if not gateway or not authorization_code:
-        return ApiResponse(error="Gateway and authorization_code are required", status=422)
-    
-    # TODO: Verify authorization code with payment gateway
-    # For now, create a placeholder payment method
-    
-    # Check if already exists
-    existing = UserPayments.objects.filter(user=user, gateway=gateway).first()
-    if existing:
-        existing.updated_at = timezone.now()
-        existing.save()
-        payment = existing
-    else:
-        payment = UserPayments.objects.create(
-            uuid=str(uuid_lib.uuid4()),
-            user=user,
-            gateway=gateway,
-            icon='',
-            name=user.name or user.email,
-            external_user_id='',
-            username='',
-            meta={},
-            created_at=timezone.now(),
-            updated_at=timezone.now()
-        )
-    
-    return ApiResponse(
-        status='success',
-        message='Payment method added successfully',
-        payments=UserPaymentSerializer(payment).data
-    )
+# Removed duplicate
 
-@api_view(['DELETE'])
-def user_payment_delete(request, uuid):
-    """Delete a payment method"""
-    from .auth_helpers import verify_access_token
-    
-    # Get user from token
-    auth_header = request.headers.get('Authorization', '')
-    if not auth_header.startswith('Bearer '):
-        return ApiResponse(error="Unauthorized", status=401)
-    
-    token = auth_header.split(' ')[1]
-    user = verify_access_token(token)
-    
-    if not user:
-        return ApiResponse(error="Unauthorized", status=401)
-    
-    # Find and delete payment method
-    payment = UserPayments.objects.filter(uuid=uuid, user=user).first()
-    if not payment:
-        return ApiResponse(error="Payment method not found", status=404)
-    
-    # Soft delete
-    payment.deleted_at = timezone.now()
-    payment.save()
-    
-    return ApiResponse(
-        status='success',
-        message='Payment method deleted successfully'
-    )
 
 # ============================================================================
 # USER CREATOR ENDPOINTS
@@ -2927,11 +2821,23 @@ def project_screening_question_destroy(request, project_uuid, question_uuid):
 @api_view(['GET'])
 def user_payment_index(request):
     """List user payment accounts"""
+    from .auth_helpers import verify_access_token
+    
     user_id = request.headers.get('X-User-ID') or request.query_params.get('user_id')
-    if not user_id:
+    user = None
+    
+    if user_id:
+        user = Users.objects.filter(uuid=user_id).first()
+    else:
+        auth_header = request.headers.get('Authorization', '')
+        if auth_header.startswith('Bearer '):
+            token = auth_header.split(' ')[1]
+            user = verify_access_token(token)
+            
+    if not user:
         return Response({'status': 'error', 'message': 'Unauthorized'}, status=401)
     
-    payments = UserPayments.objects.filter(user_id=user_id)
+    payments = UserPayments.objects.filter(user=user, deleted_at__isnull=True)
     result = {}
     for payment in payments:
         result[payment.gateway] = UserPaymentSerializer(payment).data
@@ -2941,13 +2847,26 @@ def user_payment_index(request):
 @api_view(['POST'])
 def user_payment_create(request):
     """Add a new payment account"""
+    from .auth_helpers import verify_access_token
+    
     user_id = request.headers.get('X-User-ID') or request.data.get('user_id')
-    if not user_id:
+    user = None
+    
+    if user_id:
+        user = Users.objects.filter(uuid=user_id).first()
+    else:
+        auth_header = request.headers.get('Authorization', '')
+        if auth_header.startswith('Bearer '):
+            token = auth_header.split(' ')[1]
+            user = verify_access_token(token)
+            
+    if not user:
         return Response({'status': 'error', 'message': 'Unauthorized'}, status=401)
     
     data = request.data
     payment = UserPayments.objects.create(
-        user_id=user_id,
+        uuid=str(uuid_lib.uuid4()),
+        user=user,
         gateway=data.get('gateway'),
         authorization_code=data.get('authorization_code'),
         created_at=timezone.now(),
@@ -2958,11 +2877,76 @@ def user_payment_create(request):
 @api_view(['DELETE'])
 def user_payment_delete(request, uuid):
     """Delete a payment account"""
+    from .auth_helpers import verify_access_token
+    
+    auth_header = request.headers.get('Authorization', '')
+    user = None
+    if auth_header.startswith('Bearer '):
+        token = auth_header.split(' ')[1]
+        user = verify_access_token(token)
+        
     payment = UserPayments.objects.filter(uuid=uuid).first()
     if not payment:
         return ApiResponse(error="Payment account not found", status=404)
+        
+    # Check ownership if user is authenticated via token
+    if user and payment.user != user:
+        return Response({'status': 'error', 'message': 'Unauthorized'}, status=401)
+        
     payment.delete()
     return ApiResponse(message="Payment account deleted successfully")
+@api_view(['POST'])
+def customer_register(request):
+    """Register a new customer (user + customer record)"""
+    from .auth_helpers import create_access_token
+    from uuid import uuid4
+    
+    data = request.data
+    email = data.get('email')
+    password = data.get('password')
+    name = data.get('name', '')
+    
+    if not email or not password:
+        return ApiResponse(error="Email and password are required", status=422)
+        
+    if Users.objects.filter(email=email).exists():
+        return ApiResponse(error="Email already exists", status=422)
+        
+    # Create user
+    user = Users.objects.create(
+        uuid=str(uuid4()),
+        email=email,
+        password=make_password(password),
+        name=name,
+        account_type='user',
+        active=1,
+        created_at=timezone.now(),
+        updated_at=timezone.now()
+    )
+    
+    # Create Customer
+    payment_type = PaymentTypes.objects.filter(name='free').first()
+    payment_status = PaymentStatuses.objects.filter(name='free').first()
+    
+    customer = Customers.objects.create(
+        uuid=str(uuid4()),
+        user=user,
+        payment_type=payment_type,
+        payment_status=payment_status,
+        created_at=timezone.now(),
+        updated_at=timezone.now()
+    )
+    
+    token = create_access_token(user)
+    
+    return ApiResponse(
+        status='success',
+        message='Customer registered successfully',
+        user=UserSerializer(user).data,
+        customer=CustomerSerializer(customer).data,
+        access_token=token,
+        token_type='Bearer'
+    )
 
 # ============================================================================
 # CUSTOMER ENDPOINTS
