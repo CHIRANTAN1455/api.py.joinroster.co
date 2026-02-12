@@ -5,7 +5,7 @@ from django.views.generic.base import RedirectView
 from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView, SpectacularSwaggerView
 
 urlpatterns = [
-    path('favicon.ico', RedirectView.as_view(url='https://app.joinroster.co/logo.png')),
+    path('favicon.ico', RedirectView.as_view(url='/static/roster_api/img/logo.png')),
     path('admin/', admin.site.urls),
     path('api/', include('roster_api.urls')),
     # OpenAPI Schema

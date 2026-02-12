@@ -1,0 +1,17 @@
+{% extends "admin/base.html" %}
+{% load static %}
+
+{% block branding %}
+<h1 id="site-name">
+    <a href="{% url 'admin:index' %}">
+        <img src="{% static 'roster_api/img/logo.png' %}" alt="Roster Logo"
+            style="height: 40px; vertical-align: middle; margin-right: 10px;">
+        Roster API Administration
+    </a>
+</h1>
+{% endblock %}
+
+{% block extrahead %}
+{{ block.super }}
+<link rel="shortcut icon" href="{% static 'roster_api/img/logo.png' %}" type="image/png">
+{% endblock %}

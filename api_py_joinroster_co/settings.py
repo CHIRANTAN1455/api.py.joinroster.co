@@ -59,9 +59,9 @@ SPECTACULAR_SETTINGS = {
     'DESCRIPTION': 'Ported Roster API from Laravel to Django',
     'VERSION': '1.0.0',
     'SERVE_INCLUDE_SCHEMA': False,
-    'SWAGGER_UI_FAVICON_HREF': 'https://app.joinroster.co/logo.png',
-    'REDOC_UI_FAVICON_HREF': 'https://app.joinroster.co/logo.png',
-    'LOGO': 'https://app.joinroster.co/logo.png',
+    'SWAGGER_UI_FAVICON_HREF': '/static/roster_api/img/logo.png',
+    'REDOC_UI_FAVICON_HREF': '/static/roster_api/img/logo.png',
+    'LOGO': '/static/roster_api/img/logo.png',
     # OTHER SETTINGS
 }
 
@@ -82,7 +82,7 @@ ROOT_URLCONF = 'api_py_joinroster_co.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [BASE_DIR / 'templates'],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
