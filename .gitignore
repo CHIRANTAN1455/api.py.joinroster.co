@@ -7,3 +7,4 @@ db.sqlite3
 *.log
 brain/
 *.~
+.agent/CRON_JOBS_PORTING_STATUS.md

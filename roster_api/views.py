@@ -3,6 +3,28 @@ from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiExample
 from django.contrib.auth.hashers import make_password, check_password
 from django.utils import timezone
+from django.shortcuts import get_object_or_404
+from .auth_helpers import verify_access_token
+
+def get_authenticated_user(request):
+    """
+    Helper to get user from Authorization header (Bearer token)
+    or X-User-ID header/query param.
+    """
+    auth_header = request.headers.get('Authorization', '')
+    if auth_header.startswith('Bearer '):
+        parts = auth_header.split(' ')
+        if len(parts) > 1:
+            return verify_access_token(parts[1])
+    
+    # Fallback to X-User-ID (mostly for development/mocking)
+    user_id = request.headers.get('X-User-ID') or request.query_params.get('user_id') or request.data.get('user_id')
+    if user_id:
+        # Check if it's a UUID or numeric ID
+        if len(str(user_id)) > 10:
+            return Users.objects.filter(uuid=user_id).first()
+        return Users.objects.filter(id=user_id).first()
+    return None
 import secrets
 import uuid as uuid_lib # Removed as we use ApiResponse
 from .utils import ApiResponse
@@ -428,6 +450,11 @@ def profile_update(request):
                 import datetime
                 payment_type = PaymentTypes.objects.filter(name='free', active=1).first()
                 payment_status = PaymentStatuses.objects.filter(name='free', active=1).first()
+                
+                if not payment_type or not payment_status:
+                    # Fallback
+                    payment_type = PaymentTypes.objects.filter(active=1).first()
+                    payment_status = PaymentStatuses.objects.filter(active=1).first()
                 
                 if payment_type and payment_status:
                     Customers.objects.create(
@@ -1100,8 +1127,10 @@ def auth_logout(request):
     # Get user from token
     auth_header = request.headers.get('Authorization', '')
     if auth_header.startswith('Bearer '):
-        token = auth_header.split(' ')[1]
-        user = verify_access_token(token)
+        parts = auth_header.split(' ')
+        if len(parts) > 1:
+            token = parts[1]
+            user = verify_access_token(token)
         
         if user:
             # Delete all tokens for this user
@@ -1309,15 +1338,7 @@ def user_delete(request, uuid):
 @api_view(['GET'])
 def user_social_index(request):
     """Get all social accounts for authenticated user"""
-    from .auth_helpers import verify_access_token
-    
-    # Get user from token
-    auth_header = request.headers.get('Authorization', '')
-    if not auth_header.startswith('Bearer '):
-        return ApiResponse(error="Unauthorized", status=401)
-    
-    token = auth_header.split(' ')[1]
-    user = verify_access_token(token)
+    user = get_authenticated_user(request)
     
     if not user:
         return ApiResponse(error="Unauthorized", status=401)
@@ -1361,6 +1382,12 @@ def user_social_create(request):
     # TODO: Verify access token with the social platform API
     # For now, create a placeholder social account
     
+    # icon, name, external_user_id, username are required fields in models
+    name = request.data.get('name') or user.name or user.email or 'Social User'
+    external_user_id = request.data.get('external_user_id') or ''
+    username = request.data.get('username') or ''
+    icon = request.data.get('icon') or ''
+    
     # Check if already exists
     existing = UserSocials.objects.filter(user=user, platform=platform).first()
     if existing:
@@ -1372,11 +1399,11 @@ def user_social_create(request):
             uuid=str(uuid_lib.uuid4()),
             user=user,
             platform=platform,
-            icon='',
-            name=user.name or user.email,
-            external_user_id='',
-            username='',
-            meta={},
+            icon=icon,
+            name=name,
+            external_user_id=external_user_id,
+            username=username,
+            meta=request.data.get('meta', {}),
             created_at=timezone.now(),
             updated_at=timezone.now()
         )
@@ -1432,8 +1459,10 @@ def user_social_content_topics(request):
         if not auth_header.startswith('Bearer '):
             return ApiResponse(error="Unauthorized", status=401)
         
-        token = auth_header.split(' ')[1]
-        user = verify_access_token(token)
+        parts = auth_header.split(' ')
+        if len(parts) > 1:
+            token = parts[1]
+            user = verify_access_token(token)
     
     if not user:
         return ApiResponse(error="User not found", status=404)
@@ -1899,8 +1928,10 @@ def user_creator_get_content_topics(request):
         else:
             return ApiResponse(error="Unauthorized", status=401)
     else:
-        token = auth_header.split(' ')[1]
-        user = verify_access_token(token)
+        parts = auth_header.split(' ')
+        if len(parts) > 1:
+            token = parts[1]
+            user = verify_access_token(token)
     
     if not user:
         return ApiResponse(error="Unauthorized", status=401)
@@ -2221,8 +2252,10 @@ def profile_statistics(request):
     
     auth_header = request.headers.get('Authorization', '')
     if auth_header.startswith('Bearer '):
-        token = auth_header.split(' ')[1]
-        user = verify_access_token(token)
+        parts = auth_header.split(' ')
+        if len(parts) > 1:
+            token = parts[1]
+            user = verify_access_token(token)
     else:
         user_id = request.headers.get('X-User-ID') or request.query_params.get('user_id')
         user = Users.objects.filter(id=user_id).first()
@@ -2283,8 +2316,10 @@ def profile_convert_as_creator(request):
     
     auth_header = request.headers.get('Authorization', '')
     if auth_header.startswith('Bearer '):
-        token = auth_header.split(' ')[1]
-        user = verify_access_token(token)
+        parts = auth_header.split(' ')
+        if len(parts) > 1:
+            token = parts[1]
+            user = verify_access_token(token)
     else:
         user_id = request.headers.get('X-User-ID') or request.data.get('user_id')
         user = Users.objects.filter(id=user_id).first()
@@ -2427,7 +2462,13 @@ def user_project_add(request):
         return Response({'status': 'error', 'message': 'Unauthorized'}, status=401)
     
     data = request.data
-    project_type = ProjectTypes.objects.filter(uuid=data.get('project_type')).first()
+    project_type_uuid = data.get('project_type')
+    if not project_type_uuid:
+        return ApiResponse(error="Project type is required", status=422)
+        
+    project_type = ProjectTypes.objects.filter(uuid=project_type_uuid).first()
+    if not project_type:
+        return ApiResponse(error="Invalid project type", status=422)
     
     project = UserProjects.objects.create(
         uuid=str(uuid_lib.uuid4()),
@@ -2821,19 +2862,7 @@ def project_screening_question_destroy(request, project_uuid, question_uuid):
 @api_view(['GET'])
 def user_payment_index(request):
     """List user payment accounts"""
-    from .auth_helpers import verify_access_token
-    
-    user_id = request.headers.get('X-User-ID') or request.query_params.get('user_id')
-    user = None
-    
-    if user_id:
-        user = Users.objects.filter(uuid=user_id).first()
-    else:
-        auth_header = request.headers.get('Authorization', '')
-        if auth_header.startswith('Bearer '):
-            token = auth_header.split(' ')[1]
-            user = verify_access_token(token)
-            
+    user = get_authenticated_user(request)
     if not user:
         return Response({'status': 'error', 'message': 'Unauthorized'}, status=401)
     
@@ -2847,28 +2876,25 @@ def user_payment_index(request):
 @api_view(['POST'])
 def user_payment_create(request):
     """Add a new payment account"""
-    from .auth_helpers import verify_access_token
-    
-    user_id = request.headers.get('X-User-ID') or request.data.get('user_id')
-    user = None
-    
-    if user_id:
-        user = Users.objects.filter(uuid=user_id).first()
-    else:
-        auth_header = request.headers.get('Authorization', '')
-        if auth_header.startswith('Bearer '):
-            token = auth_header.split(' ')[1]
-            user = verify_access_token(token)
-            
+    user = get_authenticated_user(request)
     if not user:
         return Response({'status': 'error', 'message': 'Unauthorized'}, status=401)
     
     data = request.data
+    gateway = data.get('gateway')
+    if not gateway:
+        return ApiResponse(error="Gateway is required", status=422)
+
+    # UserPayments model doesn't have authorization_code, it has external_user_id and meta
     payment = UserPayments.objects.create(
         uuid=str(uuid_lib.uuid4()),
         user=user,
-        gateway=data.get('gateway'),
-        authorization_code=data.get('authorization_code'),
+        gateway=gateway,
+        icon=data.get('icon', ''),
+        name=data.get('name', user.name or user.email or 'Payment Account'),
+        external_user_id=data.get('authorization_code', data.get('external_user_id', '')),
+        username=data.get('username', ''),
+        meta=data.get('meta', {}),
         created_at=timezone.now(),
         updated_at=timezone.now()
     )
@@ -2877,20 +2903,18 @@ def user_payment_create(request):
 @api_view(['DELETE'])
 def user_payment_delete(request, uuid):
     """Delete a payment account"""
-    from .auth_helpers import verify_access_token
-    
-    auth_header = request.headers.get('Authorization', '')
-    user = None
-    if auth_header.startswith('Bearer '):
-        token = auth_header.split(' ')[1]
-        user = verify_access_token(token)
+    user = get_authenticated_user(request)
+    auth_user = user # For clarity in ownership check
         
     payment = UserPayments.objects.filter(uuid=uuid).first()
     if not payment:
         return ApiResponse(error="Payment account not found", status=404)
         
-    # Check ownership if user is authenticated via token
-    if user and payment.user != user:
+    # Check ownership if user is authenticated
+    if auth_user and payment.user != auth_user:
+        return Response({'status': 'error', 'message': 'Unauthorized'}, status=401)
+    elif not auth_user:
+        # If no auth provided at all, we might want to allow it for now or block
         return Response({'status': 'error', 'message': 'Unauthorized'}, status=401)
         
     payment.delete()
@@ -2927,6 +2951,15 @@ def customer_register(request):
     # Create Customer
     payment_type = PaymentTypes.objects.filter(name='free').first()
     payment_status = PaymentStatuses.objects.filter(name='free').first()
+    
+    if not payment_type or not payment_status:
+        # Fallback to any active plan if 'free' is missing
+        payment_type = PaymentTypes.objects.filter(active=1).first()
+        payment_status = PaymentStatuses.objects.filter(active=1).first()
+        
+    if not payment_type or not payment_status:
+        # Still null, can't create customer record
+        return ApiResponse(error="Payment gateway not configured correctly", status=500)
     
     customer = Customers.objects.create(
         uuid=str(uuid4()),
@@ -2975,8 +3008,8 @@ def customer_get_by_user(request):
 @api_view(['POST'])
 def customer_upgrade(request):
     """Upgrade customer plan"""
-    user_id = request.headers.get('X-User-ID') or request.data.get('user_id')
-    if not user_id:
+    user = get_authenticated_user(request)
+    if not user:
         return Response({'status': 'error', 'message': 'Unauthorized'}, status=401)
     
     # Mock upgrade result
@@ -3067,10 +3100,17 @@ def chat_message(request, uuid):
     if not message_text:
         return ApiResponse(error="Message is required", status=400)
         
+    if not user_id:
+        return ApiResponse(error="User identification required", status=401)
+        
+    user = Users.objects.filter(id=user_id).first()
+    if not user:
+        return ApiResponse(error="User not found", status=404)
+        
     message = ChatMessages.objects.create(
         uuid=str(uuid_lib.uuid4()),
         chat=chat,
-        user_id=user_id,
+        user=user,
         message=message_text,
         created_at=timezone.now()
     )
@@ -3088,8 +3128,17 @@ def chat_create_custom_message(request):
     recipient_id = request.data.get('recipient_id')
     message_text = request.data.get('message')
     
-    # Check if chat exists or create new
-    chat = Chats.objects.filter(participants__contains=[user_id, recipient_id]).first()
+    if not user_id or not recipient_id or not message_text:
+        return ApiResponse(error="user_id, recipient_id, and message are required", status=422)
+    
+    sender = Users.objects.filter(id=user_id).first()
+    recipient = Users.objects.filter(id=recipient_id).first()
+    
+    if not sender or not recipient:
+        return ApiResponse(error="Sender or Recipient not found", status=404)
+        
+    # Check if chat exists (ordering doesn't matter in participants list usually)
+    chat = Chats.objects.filter(participants__contains=user_id).filter(participants__contains=recipient_id).first()
     if not chat:
         chat = Chats.objects.create(
             uuid=str(uuid_lib.uuid4()),
@@ -3100,7 +3149,7 @@ def chat_create_custom_message(request):
     message = ChatMessages.objects.create(
         uuid=str(uuid_lib.uuid4()),
         chat=chat,
-        user_id=user_id,
+        user=sender,
         message=message_text,
         created_at=timezone.now()
     )
@@ -3116,11 +3165,19 @@ def chat_init(request):
     project_id = request.data.get('project_id')
     user_id = request.headers.get('X-User-ID') or request.data.get('user_id')
     
+    if not project_id or not user_id:
+        return ApiResponse(error="project_id and user_id are required", status=422)
+        
     project = get_object_or_404(Projects, uuid=project_id)
+    user = Users.objects.filter(id=user_id).first()
+    
+    if not user:
+        return ApiResponse(error="User not found", status=404)
+        
     # create chat logic
     chat = Chats.objects.create(
         uuid=str(uuid_lib.uuid4()),
-        participants=[user_id, project.user_id],
+        participants=[user.id, project.user_id],
         created_at=timezone.now()
     )
     
@@ -3132,9 +3189,18 @@ def chat_init_public(request):
     recipient_id = request.data.get('recipient_id')
     user_id = request.headers.get('X-User-ID') or request.data.get('user_id')
     
+    if not user_id or not recipient_id:
+        return ApiResponse(error="user_id and recipient_id are required", status=422)
+        
+    user = Users.objects.filter(id=user_id).first()
+    recipient = Users.objects.filter(id=recipient_id).first()
+    
+    if not user or not recipient:
+        return ApiResponse(error="User or Recipient not found", status=404)
+        
     chat = Chats.objects.create(
         uuid=str(uuid_lib.uuid4()),
-        participants=[user_id, recipient_id],
+        participants=[user.id, recipient.id],
         created_at=timezone.now()
     )
     
@@ -3180,16 +3246,23 @@ def favourite_store(request):
     editor_uuid = request.data.get('editor')
     status = request.data.get('status') # true to add, false to remove
     
-    editor = get_object_or_404(Users, uuid=editor_uuid)
+    if not user_id or not editor_uuid:
+        return ApiResponse(error="user_id and editor are required", status=422)
+        
+    user = Users.objects.filter(id=user_id).first()
+    editor = Users.objects.filter(uuid=editor_uuid).first()
     
-    if status:
+    if not user or not editor:
+        return ApiResponse(error="User or Editor not found", status=404)
+    
+    if status is True or status == 'true':
         favourite, created = UserFavourites.objects.get_or_create(
-            user_id=user_id,
+            user=user,
             favourite_user=editor
         )
         message = "Added to favourites"
     else:
-        UserFavourites.objects.filter(user_id=user_id, favourite_user=editor).delete()
+        UserFavourites.objects.filter(user=user, favourite_user=editor).delete()
         message = "Removed from favourites"
         
     return ApiResponse(message=message)
@@ -3202,9 +3275,21 @@ def favourite_store(request):
 def profile_visit_store(request):
     """Store profile visit"""
     user_id = request.headers.get('X-User-ID') or request.data.get('user_id')
-    editor_id = request.data.get('editor_id') # This is likely UUID or ID depending on frontend
+    editor_id = request.data.get('editor_id') 
     
+    if not user_id or not editor_id:
+        return ApiResponse(error="user_id and editor_id are required", status=422)
+        
+    user = Users.objects.filter(id=user_id).first()
+    # editor_id might be UUID or ID, check both
+    editor = Users.objects.filter(uuid=editor_id).first() or Users.objects.filter(id=editor_id).first()
+    
+    if not user or not editor:
+        return ApiResponse(error="User or Editor not found", status=404)
+        
     ProfileVisits.objects.create(
+        user=user,
+        editor=editor,
         user_id=user_id,
         editor_id=editor_id,
         created_at=timezone.now()
