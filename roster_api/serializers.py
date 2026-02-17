@@ -13,13 +13,28 @@ from .models import (
     Projects, Matchings, MatchingEditors, MatchingSkills, MatchingPlatforms,
     MatchingSoftware, MatchingContentVerticals, MatchingCreativeStyles,
     MatchingJobTypes, Chats, ChatMessages, UserFavourites, ProfileVisits,
-    Setting
+    Setting, Files
 )
 
 
 class SettingSerializer(serializers.ModelSerializer):
     class Meta:
         model = Setting
+        fields = '__all__'
+
+class FilesSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Files
+        fields = '__all__'
+
+class AdminUserSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Users
+        fields = ['id', 'uuid', 'name', 'email', 'account_type', 'active', 'created_at']
+
+class AdminProjectSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Projects
         fields = '__all__'
 
 

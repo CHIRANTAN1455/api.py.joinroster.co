@@ -40,7 +40,7 @@ from .models import (
     ProjectScreeningAnswers, ProjectScreeningQuestions, CustomScreeningQuestions,
     QuestionTypes, UserVerificationLinks, UserPricing, ProjectTypes,
     UserJobTypePricing, UserSocialProfile, UserLanguage, UserSoftware,
-    UserEquipments, UserCreativeStyles, UserJobTypes, Setting
+    UserEquipments, UserCreativeStyles, UserJobTypes, Setting, Files
 )
 from .serializers import (
     SkillSerializer, 
@@ -89,9 +89,11 @@ from .serializers import (
     ChatMessageSerializer,
     UserFavouriteSerializer,
     ProfileVisitSerializer,
-    UserContentVerticalSerializer,
     UserSoftwareSerializer,
-    SettingSerializer
+    SettingSerializer,
+    FilesSerializer,
+    AdminUserSerializer,
+    AdminProjectSerializer
 )
 
 
@@ -3437,3 +3439,274 @@ def profile_visit_store(request):
     )
     
     return ApiResponse(message="Profile visit recorded")
+
+# ============================================================================
+# ADMIN MANAGEMENT ENDPOINTS
+# ============================================================================
+
+@api_view(['GET'])
+def admin_list_editors(request):
+    """List all editors for admin"""
+    # TODO: check_permission('admin_access')
+    page = int(request.query_params.get('page', 1))
+    per_page = int(request.query_params.get('per_page', 20))
+    
+    editors = Users.objects.filter(account_type='editor', deleted_at__isnull=True)
+    total = editors.count()
+    
+    start = (page - 1) * per_page
+    end = start + per_page
+    editors_page = editors[start:end]
+    
+    return ApiResponse(
+        status='success',
+        message='Editors loaded successfully',
+        editors=AdminUserSerializer(editors_page, many=True).data,
+        total=total,
+        page=page
+    )
+
+@api_view(['GET'])
+def admin_get_editor(request, id):
+    """Get editor details for admin"""
+    # TODO: check_permission('admin_access')
+    editor = Users.objects.filter(id=id, account_type='editor').first()
+    if not editor:
+        editor = Users.objects.filter(uuid=id, account_type='editor').first()
+        
+    if not editor:
+        return ApiResponse(error="Editor not found", status=404)
+        
+    return ApiResponse(
+        status='success',
+        message='Editor loaded successfully',
+        editor=AdminUserSerializer(editor).data
+    )
+
+@api_view(['GET'])
+def admin_list_creators(request):
+    """List all creators (customers) for admin"""
+    # TODO: check_permission('admin_access')
+    page = int(request.query_params.get('page', 1))
+    per_page = int(request.query_params.get('per_page', 20))
+    
+    creators = Users.objects.filter(account_type='user', deleted_at__isnull=True)
+    total = creators.count()
+    
+    start = (page - 1) * per_page
+    end = start + per_page
+    creators_page = creators[start:end]
+    
+    return ApiResponse(
+        status='success',
+        message='Creators loaded successfully',
+        creators=AdminUserSerializer(creators_page, many=True).data,
+        total=total,
+        page=page
+    )
+
+@api_view(['GET'])
+def admin_get_creator(request, id):
+    """Get creator details for admin"""
+    # TODO: check_permission('admin_access')
+    creator = Users.objects.filter(id=id, account_type='user').first()
+    if not creator:
+        creator = Users.objects.filter(uuid=id, account_type='user').first()
+        
+    if not creator:
+        return ApiResponse(error="Creator not found", status=404)
+        
+    return ApiResponse(
+        status='success',
+        message='Creator loaded successfully',
+        user=AdminUserSerializer(creator).data
+    )
+
+@api_view(['GET'])
+def admin_list_projects(request):
+    """List all projects for admin"""
+    # TODO: check_permission('admin_access')
+    page = int(request.query_params.get('page', 1))
+    per_page = int(request.query_params.get('per_page', 20))
+    
+    projects = Projects.objects.all()
+    total = projects.count()
+    
+    start = (page - 1) * per_page
+    end = start + per_page
+    projects_page = projects[start:end]
+    
+    return ApiResponse(
+        status='success',
+        message='Projects loaded successfully',
+        projects=AdminProjectSerializer(projects_page, many=True).data,
+        total=total,
+        page=page
+    )
+
+@api_view(['GET'])
+def admin_get_project(request, id):
+    """Get project details for admin"""
+    # TODO: check_permission('admin_access')
+    project = Projects.objects.filter(id=id).first()
+    if not project:
+        project = Projects.objects.filter(uuid=id).first()
+        
+    if not project:
+        return ApiResponse(error="Project not found", status=404)
+        
+    return ApiResponse(
+        status='success',
+        message='Project loaded successfully',
+        project=AdminProjectSerializer(project).data
+    )
+
+@api_view(['DELETE'])
+def admin_delete_account(request, email):
+    """Delete a user account by email"""
+    # TODO: check_permission('admin_access')
+    user = Users.objects.filter(email=email).first()
+    if not user:
+        return ApiResponse(error="User not found", status=404)
+        
+    user.deleted_at = timezone.now()
+    user.active = 0
+    user.save()
+    
+    return ApiResponse(
+        status='success',
+        message='Deleted the account'
+    )
+
+@api_view(['POST'])
+def admin_email_user(request):
+    """Email a user (Placeholder)"""
+    # TODO: check_permission('admin_access')
+    user_id = request.data.get('user_id')
+    return ApiResponse(
+        status='success',
+        message=f'Emailed {user_id}'
+    )
+
+# ============================================================================
+# FILE MANAGEMENT ENDPOINTS
+# ============================================================================
+
+import os
+from django.conf import settings
+from django.core.files.storage import default_storage
+from django.core.files.base import ContentFile
+from django.http import FileResponse, HttpResponse
+
+@api_view(['POST'])
+def file_store(request):
+    """Store a file for authenticated user"""
+    user = get_authenticated_user(request)
+    if not user:
+        return ApiResponse(error="Unauthorized", status=401)
+        
+    if 'photo' not in request.FILES:
+        return ApiResponse(error="File is required", status=400)
+        
+    uploaded_file = request.FILES['photo']
+    file_name = f"{timezone.now().timestamp()}_{uploaded_file.name}"
+    
+    # Save to storage
+    path = default_storage.save(f"users/{user.id}/{file_name}", ContentFile(uploaded_file.read()))
+    
+    file_record = Files.objects.create(
+        uuid=str(uuid_lib.uuid4()),
+        user=user,
+        name=path,
+        description=uploaded_file.name,
+        reference_name='users',
+        reference_id=str(user.id),
+        public=1,
+        created_at=timezone.now(),
+        updated_at=timezone.now()
+    )
+    
+    return ApiResponse(
+        status='success',
+        message='File created successfully',
+        file=FilesSerializer(file_record).data
+    )
+
+@api_view(['POST'])
+def file_upload(request):
+    """General file upload to storage"""
+    if 'file' not in request.FILES:
+        return ApiResponse(error="File is required", status=400)
+        
+    uploaded_file = request.FILES['file']
+    file_name = f"{timezone.now().timestamp()}_{uploaded_file.name}"
+    
+    # For now, save to local storage (Google Cloud Storage placeholder)
+    path = default_storage.save(f"uploads/{file_name}", ContentFile(uploaded_file.read()))
+    url = default_storage.url(path)
+    
+    return ApiResponse(url=url)
+
+@api_view(['POST'])
+def file_upload_multiple(request):
+    """Multiple files upload to storage"""
+    if 'files' not in request.FILES:
+        return ApiResponse(error="Files are required", status=400)
+        
+    files = request.FILES.getlist('files')
+    uploaded_files = []
+    
+    for f in files:
+        file_name = f"{timezone.now().timestamp()}_{uuid_lib.uuid4()}_{f.name}"
+        path = default_storage.save(f"uploads/{file_name}", ContentFile(f.read()))
+        uploaded_files.append({
+            'url': default_storage.url(path),
+            'format': os.path.splitext(f.name)[1][1:],
+            'original_name': f.name,
+            'size': f.size
+        })
+        
+    return ApiResponse(
+        success=True,
+        uploaded_files=uploaded_files,
+        total_uploaded=len(uploaded_files),
+        total_files=len(files)
+    )
+
+@api_view(['GET'])
+def file_get_signed_url(request, filename):
+    """Get a signed URL (Placeholder for GCS)"""
+    url = default_storage.url(filename)
+    return ApiResponse(url=url)
+
+@api_view(['GET'])
+def file_serve(request, id):
+    """Serve file content"""
+    file_record = Files.objects.filter(uuid=id).first()
+    if not file_record:
+        return ApiResponse(error="File not found", status=404)
+        
+    if not file_record.public and not get_authenticated_user(request):
+        return ApiResponse(error="Unauthorized", status=401)
+        
+    path = os.path.join(settings.MEDIA_ROOT, file_record.name)
+    if not os.path.exists(path):
+        return ApiResponse(error="File not found on disk", status=404)
+        
+    return FileResponse(open(path, 'rb'))
+
+@api_view(['GET'])
+def file_download(request, id):
+    """Download file"""
+    file_record = Files.objects.filter(uuid=id).first()
+    if not file_record:
+        return ApiResponse(error="File not found", status=404)
+        
+    path = os.path.join(settings.MEDIA_ROOT, file_record.name)
+    if not os.path.exists(path):
+        return ApiResponse(error="File not found on disk", status=404)
+        
+    response = FileResponse(open(path, 'rb'))
+    response['Content-Disposition'] = f'attachment; filename="{os.path.basename(file_record.name)}"'
+    return response
+

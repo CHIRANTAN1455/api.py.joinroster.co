@@ -222,4 +222,22 @@ urlpatterns = [
     path('matching/token/<token>', matching_get_by_token, name='matching_get_by_token'),
     path('matching/create-from-favourites', matching_create_from_favorite_creators, name='matching_create_from_favorite_creators'),
     path('matching/admin/<id>/update', matching_admin_update, name='matching_admin_update'),
+
+    # Admin Management Endpoints
+    path('admin/editors', views.admin_list_editors, name='admin_list_editors'),
+    path('admin/editors/<id>', views.admin_get_editor, name='admin_get_editor'),
+    path('admin/creators', views.admin_list_creators, name='admin_list_creators'),
+    path('admin/creators/<id>', views.admin_get_creator, name='admin_get_creator'),
+    path('admin/projects', views.admin_list_projects, name='admin_list_projects'),
+    path('admin/projects/<id>', views.admin_get_project, name='admin_get_project'),
+    path('admin/delete-account/<email>', views.admin_delete_account, name='admin_delete_account'),
+    path('admin/email-user', views.admin_email_user, name='admin_email_user'),
+
+    # File Management Endpoints
+    path('file/store', views.file_store, name='file_store'),
+    path('file/upload', views.file_upload, name='file_upload'),
+    path('file/upload-multiple', views.file_upload_multiple, name='file_upload_multiple'),
+    path('file/signed-url/<filename>', views.file_get_signed_url, name='file_get_signed_url'),
+    path('file/serve/<id>', views.file_serve, name='file_serve'),
+    path('file/download/<id>', views.file_download, name='file_download'),
 ]
