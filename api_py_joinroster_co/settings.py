@@ -17,6 +17,13 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# Set managed=True for all models during tests so that Django creates the test database tables.
+if 'test' in sys.argv:
+    from django.db.models.signals import class_prepared
+    def set_managed(sender, **kwargs):
+        sender._meta.managed = True
+    class_prepared.connect(set_managed)
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -158,18 +165,18 @@ STATIC_URL = 'static/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# Set managed=True for all models during tests so that Django creates the test database tables.
-# This is necessary because many models are introspected from a legacy DB and have managed=False.
 if 'test' in sys.argv:
-    from django.db.models.signals import class_prepared
-    def set_managed(sender, **kwargs):
-        sender._meta.managed = True
-    class_prepared.connect(set_managed)
-    
     # Overriding settings for tests to ensure CI passes
     CORS_ALLOW_ALL_ORIGINS = True
     DEBUG = True
     if not SECRET_KEY:
         SECRET_KEY = 'test-secret-key-123'
     
-    print("Test mode: All models will be treated as managed, CORS open.")
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
+    
+    print("Test mode: All models will be treated as managed, CORS open, using SQLite.")

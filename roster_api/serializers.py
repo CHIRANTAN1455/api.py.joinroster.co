@@ -12,8 +12,15 @@ from .models import (
     CustomScreeningQuestions, QuestionTypes, UserVerificationLinks,
     Projects, Matchings, MatchingEditors, MatchingSkills, MatchingPlatforms,
     MatchingSoftware, MatchingContentVerticals, MatchingCreativeStyles,
-    MatchingJobTypes, Chats, ChatMessages, UserFavourites, ProfileVisits
+    MatchingJobTypes, Chats, ChatMessages, UserFavourites, ProfileVisits,
+    Setting
 )
+
+
+class SettingSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Setting
+        fields = '__all__'
 
 
 class SkillSerializer(serializers.ModelSerializer):

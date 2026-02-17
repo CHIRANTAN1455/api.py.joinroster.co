@@ -6,6 +6,7 @@
 #   * Remove `managed = False` lines if you wish to allow Django to create, modify, and delete the table
 # Feel free to rename the models, but don't rename db_table values or field names.
 from django.db import models
+import sys
 
 
 class ChatMessages(models.Model):
@@ -1399,7 +1400,7 @@ class Setting(models.Model):
     updated_at = models.DateTimeField(blank=True, null=True)
 
     class Meta:
-        managed = False
+        managed = 'test' in sys.argv
         db_table = 'settings'
 
 

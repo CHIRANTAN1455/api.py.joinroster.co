@@ -40,7 +40,7 @@ from .models import (
     ProjectScreeningAnswers, ProjectScreeningQuestions, CustomScreeningQuestions,
     QuestionTypes, UserVerificationLinks, UserPricing, ProjectTypes,
     UserJobTypePricing, UserSocialProfile, UserLanguage, UserSoftware,
-    UserEquipments, UserCreativeStyles, UserJobTypes
+    UserEquipments, UserCreativeStyles, UserJobTypes, Setting
 )
 from .serializers import (
     SkillSerializer, 
@@ -90,7 +90,8 @@ from .serializers import (
     UserFavouriteSerializer,
     ProfileVisitSerializer,
     UserContentVerticalSerializer,
-    UserSoftwareSerializer
+    UserSoftwareSerializer,
+    SettingSerializer
 )
 
 
@@ -1143,6 +1144,146 @@ def auth_logout(request):
         status='success',
         message='Logged out successfully'
     )
+
+@api_view(['POST'])
+def auth_social(request):
+    """Handle social authentication (Google, Facebook, Apple, etc.)"""
+    from .auth_helpers import create_access_token
+    
+    provider = request.data.get('provider')
+    access_token = request.data.get('access_token')
+    
+    if not provider or not access_token:
+        return ApiResponse(error="Provider and access token are required", status=422)
+    
+    # Placeholder for actual social validation logic (e.g., verifying with Google/FB)
+    # For now, we search for the user by email if provided, or by social identity
+    email = request.data.get('email')
+    if not email:
+        # In a real app, we'd fetch this from the provider using the access_token
+        return ApiResponse(error="Email is required for social login", status=422)
+        
+    user = Users.objects.filter(email=email).first()
+    
+    if not user:
+        # Create user if doesn't exist (Registration via Social)
+        user = Users.objects.create(
+            uuid=str(uuid_lib.uuid4()),
+            email=email,
+            name=request.data.get('name', email.split('@')[0]),
+            active=1, # Socially verified users are usually active
+            account_type=request.data.get('account_type', 'editor'),
+            created_at=timezone.now(),
+            updated_at=timezone.now()
+        )
+    
+    access_token = create_access_token(user)
+    
+    return ApiResponse(
+        status='success',
+        message='Social login successful',
+        user=UserSerializer(user).data,
+        access_token=access_token,
+        token_type='Bearer'
+    )
+
+@api_view(['POST'])
+def auth_linkedin(request):
+    """Handle LinkedIn authentication"""
+    # This usually involves exchanging a code for an access token, then getting user info
+    # Simplified version for now
+    return auth_social(request)
+
+@api_view(['GET'])
+def auth_chat(request):
+    """Get chat-related authentication info"""
+    user = get_authenticated_user(request)
+    if not user:
+        return ApiResponse(error="Unauthorized", status=401)
+        
+    return ApiResponse(
+        id=user.uuid,
+        name=user.name,
+        photo=user.photo
+    )
+
+@api_view(['GET'])
+def auth_broadcasting(request):
+    """Get broadcasting (e.g., Pusher) auth info"""
+    user = get_authenticated_user(request)
+    if not user:
+        return ApiResponse(error="Unauthorized", status=401)
+        
+    return ApiResponse(
+        id=user.uuid,
+        photo=user.photo,
+        name=user.name,
+        first_name=user.first_name,
+        last_name=user.last_name,
+        job_title=user.job_title,
+        username=user.username,
+        fun_fact=user.fun_fact
+    )
+
+# ============================================================================
+# SETTING MANAGEMENT ENDPOINTS
+# ============================================================================
+
+@api_view(['GET'])
+def settings_index(request):
+    """List setting records"""
+    setting_type = request.query_params.get('type')
+    if setting_type:
+        settings = Setting.objects.filter(type=setting_type)
+    else:
+        settings = Setting.objects.all()
+    
+    serializer = SettingSerializer(settings, many=True)
+    return ApiResponse(settings=serializer.data)
+
+@api_view(['POST'])
+def settings_store(request):
+    """Store a newly created setting"""
+    # TODO: check_permission(['setting_add', 'setting_edit'])
+    serializer = SettingSerializer(data=request.data)
+    if serializer.is_valid():
+        serializer.save()
+        return ApiResponse(message="Setting created successfully", setting=serializer.data)
+    return ApiResponse(error=serializer.errors, status=400)
+
+@api_view(['POST'])
+def settings_update(request):
+    """Update setting records"""
+    # This matches the Laravel logic of bulk updating based on key/value pairs in request
+    # TODO: check_permission('setting_edit')
+    data = request.data
+    results = []
+    
+    for key, value in data.items():
+        if key == 'user_id' or key.startswith('_'): # Skip internal/helper fields
+            continue
+            
+        setting = Setting.objects.filter(key=key).first()
+        if setting:
+            # Note: Laravel logic handles file uploads here too, but we use uuid strings for files in Setting.value
+            setting.value = value
+            setting.updated_at = timezone.now()
+            setting.save()
+            results.append(SettingSerializer(setting).data)
+            
+    return ApiResponse(message="Settings updated successfully", results=results)
+
+@api_view(['DELETE'])
+def settings_destroy(request, id):
+    """Remove a setting by UUID or ID"""
+    # In Laravel it uses uuid by default for destroy check
+    # TODO: check_permission('setting_delete')
+    setting = Setting.objects.filter(id=id).first()
+    if not setting:
+        return ApiResponse(error="Setting not found", status=404)
+        
+    setting.delete()
+    return ApiResponse(message="Setting deleted successfully")
 
 # ============================================================================
 # USER MANAGEMENT ENDPOINTS

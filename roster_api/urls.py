@@ -28,7 +28,8 @@ from .views import (
     favourite_index, favourite_store, profile_visit_store,
     matching_get_by_project_id, matching_public_create, matching_get_by_token,
     matching_create_from_favorite_creators, matching_admin_update,
-    content_forms_index, project_types_index, project_types_user_index, reasons_index, referrals_index
+    content_forms_index, project_types_index, project_types_user_index, reasons_index, referrals_index,
+    settings_index, settings_store, settings_update, settings_destroy
 )
 from . import views # Keep this for views.test_api
 
@@ -49,6 +50,10 @@ urlpatterns = [
     path('location', location_create, name='location_create'),
     path('editor', editor_create, name='editor_create'),
     path('invite', invite, name='invite'),
+    path('settings', settings_index, name='settings_index'),
+    path('settings/add', settings_store, name='settings_store'),
+    path('settings/update', settings_update, name='settings_update'),
+    path('settings/<id>/delete', settings_destroy, name='settings_destroy'),
 
     # ProfileController Endpoints
     path('profile', profile_get, name='profile_get'),
@@ -88,6 +93,10 @@ urlpatterns = [
     path('auth/reset', views.auth_reset_password, name='auth_reset_password'),
     path('auth/password', views.auth_change_password, name='auth_change_password'),
     path('auth/logout', views.auth_logout, name='auth_logout'),
+    path('auth/social', views.auth_social, name='auth_social'),
+    path('auth/linkedin', views.auth_linkedin, name='auth_linkedin'),
+    path('auth/chat', views.auth_chat, name='auth_chat'),
+    path('auth/broadcasting', views.auth_broadcasting, name='auth_broadcasting'),
     
     # User Management Endpoints
     path('user/<uuid>', views.user_update, name='user_update'),
