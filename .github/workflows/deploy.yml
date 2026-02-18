@@ -1,0 +1,21 @@
+name: Deploy Agent
+
+on:
+  push:
+    branches:
+      - agent
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: SSH Deploy
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: 3.6.126.55
+          username: deployer
+          key: ${{ secrets.ClawBotAgentKey }}
+          script: |
+            cd /home/deployer
+            ./deploy.sh
