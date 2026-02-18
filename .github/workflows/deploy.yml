@@ -15,7 +15,7 @@ jobs:
         with:
           host: 3.6.126.55
           username: deployer
-          key: ${{ secrets.ClawBotAgentKey }}
+          key: ${{ secrets.EC2_SSH_KEY }}
           script: |
             cd /home/deployer
             ./deploy.sh
