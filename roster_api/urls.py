@@ -44,12 +44,12 @@ urlpatterns = [
     path('jobtypes', job_types_index, name='job_types_index'),
 
     # DataController Endpoints
-    path('country', country_create, name='country_create'),
-    path('state', state_create, name='state_create'),
-    path('city', city_create, name='city_create'),
-    path('location', location_create, name='location_create'),
-    path('editor', editor_create, name='editor_create'),
-    path('invite', invite, name='invite'),
+    path('data/country', country_create, name='country_create'),
+    path('data/state', state_create, name='state_create'),
+    path('data/city', city_create, name='city_create'),
+    path('data/location', location_create, name='location_create'),
+    path('data/editor', editor_create, name='editor_create'),
+    path('data/editor/invite', invite, name='invite'),
     path('settings', settings_index, name='settings_index'),
     path('settings/add', settings_store, name='settings_store'),
     path('settings/update', settings_update, name='settings_update'),
@@ -169,7 +169,7 @@ urlpatterns = [
     path('matching/editor/update', matching_editor_update, name='matching_editor_update'),
 
     # Editor Endpoints
-    path('editors', editor_index, name='editor_index'),
+    path('editor', editor_index, name='editor_index'),
     path('editor/<username>', editor_get, name='editor_get'),
     path('editor/<username>/projects', editor_projects, name='editor_projects'),
     path('editor/<username>/creators', editor_creators, name='editor_creators'),
