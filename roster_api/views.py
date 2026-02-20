@@ -804,7 +804,7 @@ def auth_init(request):
     identifier = request.data.get('email') or request.data.get('phone', '').strip()
     
     if not identifier:
-        return ApiResponse(error="Email or phone is required", status=422)
+        return ApiResponse(message="Email or phone is required", status_code=422)
     
     # Check if user exists
     user = Users.objects.filter(email=identifier).first() or Users.objects.filter(phone=identifier).first()
@@ -824,7 +824,7 @@ def auth_login(request):
     password = request.data.get('password')
     
     if not username or not password:
-        return ApiResponse(error="Username and password are required", status=422)
+        return ApiResponse(message="Username and password are required", status_code=422)
     
     # Find user by email, phone, or username
     user = (Users.objects.filter(email=username).first() or 
@@ -832,7 +832,7 @@ def auth_login(request):
             Users.objects.filter(username=username).first())
     
     if not user or not check_password(password, user.password):
-        return ApiResponse(error="Login failed", status=401)
+        return ApiResponse(message="Login failed", status_code=401)
     
     # Load related data
     user_creators = UserCreators.objects.filter(user=user).select_related('creator_group')
@@ -859,20 +859,20 @@ def auth_register(request):
     policy_accepted = request.data.get('policy_accepted')
     
     if not email:
-        return ApiResponse(error="Email is required", status=422)
+        return ApiResponse(message="Email is required", status_code=422)
     
     if not password:
-        return ApiResponse(error="Password is required", status=422)
+        return ApiResponse(message="Password is required", status_code=422)
         
     if not policy_accepted:
-        return ApiResponse(error="Policy acceptance is required", status=422)
+        return ApiResponse(message="Policy acceptance is required", status_code=422)
     
     # Check if user already exists
     if Users.objects.filter(email=email).exists():
-        return ApiResponse(error="Email already exists", status=422)
+        return ApiResponse(message="Email already exists", status_code=422)
     
     if phone and Users.objects.filter(phone=phone).exists():
-        return ApiResponse(error="Phone already exists", status=422)
+        return ApiResponse(message="Phone already exists", status_code=422)
     
     # Create user
     user = Users.objects.create(
