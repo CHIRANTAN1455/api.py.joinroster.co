@@ -4,7 +4,8 @@ from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiExampl
 from django.contrib.auth.hashers import make_password, check_password
 from django.utils import timezone
 from django.shortcuts import get_object_or_404
-from .auth_helpers import verify_access_token
+from .auth_helpers import verify_access_token, check_laravel_password
+from .user_resource import get_user_resource_dict
 
 def get_authenticated_user(request):
     """
@@ -831,7 +832,7 @@ def auth_login(request):
             Users.objects.filter(phone=username).first() or
             Users.objects.filter(username=username).first())
     
-    if not user or not check_password(password, user.password):
+    if not user or not check_laravel_password(password, user.password):
         return ApiResponse(message="Login failed", status_code=401)
     
     # Load related data
@@ -842,8 +843,8 @@ def auth_login(request):
     
     return ApiResponse(
         status='success',
-        message='Login successful',
-        user=UserSerializer(user).data,
+        message='Login Successful!',
+        user=get_user_resource_dict(user),
         access_token=access_token,
         token_type='Bearer'
     )
@@ -908,8 +909,8 @@ def auth_register(request):
     
     return ApiResponse(
         status='success',
-        message='Registration successful. Please verify your email.',
-        user=UserSerializer(user).data,
+        message='Registration Successful! Please Verify Account with OTP',
+        user=get_user_resource_dict(user),
         access_token=access_token,
         token_type='Bearer'
     )
@@ -1000,8 +1001,8 @@ def auth_verify(request):
     
     return ApiResponse(
         status='success',
-        message='Verification successful',
-        user=UserSerializer(user).data
+        message='Verification Successful!',
+        user=get_user_resource_dict(user)
     )
 
 @api_view(['POST'])
@@ -1078,8 +1079,8 @@ def auth_reset_password(request):
     
     return ApiResponse(
         status='success',
-        message='Password reset successful',
-        user=UserSerializer(user).data,
+        message='Password Reset Successful!',
+        user=get_user_resource_dict(user),
         access_token=access_token,
         token_type='Bearer'
     )
@@ -1110,8 +1111,8 @@ def auth_change_password(request):
     if new_password != confirm_password:
         return ApiResponse(error="Passwords do not match", status=422)
     
-    if not check_password(current_password, user.password):
-        return ApiResponse(error="Current password is incorrect", status=401)
+    if not check_laravel_password(current_password, user.password):
+        return ApiResponse(message="Current password is incorrect", status_code=401)
     
     # Update password
     user.password = make_password(new_password)
@@ -1184,7 +1185,7 @@ def auth_social(request):
     return ApiResponse(
         status='success',
         message='Social login successful',
-        user=UserSerializer(user).data,
+        user=get_user_resource_dict(user),
         access_token=access_token,
         token_type='Bearer'
     )

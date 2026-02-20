@@ -68,3 +68,22 @@ def send_otp_email(user, otp_code):
     # TODO: Integrate with SendGrid or email service
     print(f"OTP for {user.email}: {otp_code}")
     return True
+
+def check_laravel_password(password, hashed):
+    """
+    Check password against hash, handling Laravel $2y$ bcrypt prefix.
+    """
+    from django.contrib.auth.hashers import check_password
+    import bcrypt
+    
+    if hashed and hashed.startswith('$2y$'):
+        # Laravel uses $2y$, python-bcrypt uses $2b$
+        compatible_hash = '$2b$' + hashed[4:]
+        try:
+            return bcrypt.checkpw(password.encode('utf-8'), compatible_hash.encode('utf-8'))
+        except Exception:
+            return False
+            
+    # Fallback to standard Django check (PBKDF2, Argon2, or standard Bcrypt $2b$)
+    return check_password(password, hashed)
+
