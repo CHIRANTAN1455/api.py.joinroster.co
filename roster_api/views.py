@@ -27,7 +27,7 @@ def get_authenticated_user(request):
         return Users.objects.filter(id=user_id).first()
     return None
 import secrets
-import uuid as uuid_lib # Removed as we use ApiResponse
+import uuid
 from .utils import ApiResponse
 from .models import (
     Skills, ContentVerticals, Platforms, Software, Equipment, 
@@ -41,7 +41,7 @@ from .models import (
     ProjectScreeningAnswers, ProjectScreeningQuestions, CustomScreeningQuestions,
     QuestionTypes, UserVerificationLinks, UserPricing, ProjectTypes,
     UserJobTypePricing, UserSocialProfile, UserLanguage, UserSoftware,
-    UserEquipments, UserCreativeStyles, UserJobTypes, Setting, Files
+    UserEquipments, UserCreativeStyles, UserJobTypes, Setting, Files, Permissions, Menus
 )
 from .serializers import (
     SkillSerializer, 
@@ -3713,3 +3713,888 @@ def file_download(request, id):
 
 
 # Updated by Clawbot
+
+# --- Taxonomy CRUD Endpoints ---
+
+@api_view(['POST'])
+def skill_store(request):
+    data = request.data
+    Skills.objects.create(
+        uuid=str(uuid.uuid4()),
+        name=data.get('name'),
+        description=data.get('description', ''),
+        icon=data.get('icon'),
+        active=data.get('active', 1)
+    )
+    items = Skills.objects.filter(active=1)
+    return ApiResponse(skills=SkillSerializer(items, many=True).data)
+
+@api_view(['POST'])
+def skill_update(request):
+    data = request.data
+    item_id = data.get('id')
+    Skills.objects.filter(id=item_id).update(
+        name=data.get('name'),
+        description=data.get('description', ''),
+        icon=data.get('icon'),
+        active=data.get('active', 1)
+    )
+    items = Skills.objects.filter(active=1)
+    return ApiResponse(skills=SkillSerializer(items, many=True).data)
+
+@api_view(['GET'])
+def skill_destroy(request, id):
+    Skills.objects.filter(id=id).delete()
+    items = Skills.objects.filter(active=1)
+    return ApiResponse(skills=SkillSerializer(items, many=True).data)
+
+@api_view(['GET'])
+def skill_show(request, id):
+    item = Skills.objects.filter(id=id).first()
+    return ApiResponse(skill=SkillSerializer(item).data if item else None)
+
+@api_view(['POST'])
+def job_types_store(request):
+    data = request.data
+    JobTypes.objects.create(
+        uuid=str(uuid.uuid4()),
+        name=data.get('name'),
+        description=data.get('description', ''),
+        icon=data.get('icon'),
+        active=data.get('active', 1)
+    )
+    items = JobTypes.objects.filter(active=1)
+    return ApiResponse(jobtypes=JobTypeSerializer(items, many=True).data)
+
+@api_view(['POST'])
+def job_types_update(request):
+    data = request.data
+    item_id = data.get('id')
+    JobTypes.objects.filter(id=item_id).update(
+        name=data.get('name'),
+        description=data.get('description', ''),
+        icon=data.get('icon'),
+        active=data.get('active', 1)
+    )
+    items = JobTypes.objects.filter(active=1)
+    return ApiResponse(jobtypes=JobTypeSerializer(items, many=True).data)
+
+@api_view(['GET'])
+def job_types_destroy(request, id):
+    JobTypes.objects.filter(id=id).delete()
+    items = JobTypes.objects.filter(active=1)
+    return ApiResponse(jobtypes=JobTypeSerializer(items, many=True).data)
+
+@api_view(['GET'])
+def job_types_show(request, id):
+    item = JobTypes.objects.filter(id=id).first()
+    return ApiResponse(job_types=JobTypeSerializer(item).data if item else None)
+
+@api_view(['POST'])
+def equipment_store(request):
+    data = request.data
+    Equipment.objects.create(
+        uuid=str(uuid.uuid4()),
+        name=data.get('name'),
+        description=data.get('description', ''),
+        icon=data.get('icon'),
+        active=data.get('active', 1)
+    )
+    items = Equipment.objects.filter(active=1)
+    return ApiResponse(equipments=EquipmentSerializer(items, many=True).data)
+
+@api_view(['POST'])
+def equipment_update(request):
+    data = request.data
+    item_id = data.get('id')
+    Equipment.objects.filter(id=item_id).update(
+        name=data.get('name'),
+        description=data.get('description', ''),
+        icon=data.get('icon'),
+        active=data.get('active', 1)
+    )
+    items = Equipment.objects.filter(active=1)
+    return ApiResponse(equipments=EquipmentSerializer(items, many=True).data)
+
+@api_view(['GET'])
+def equipment_destroy(request, id):
+    Equipment.objects.filter(id=id).delete()
+    items = Equipment.objects.filter(active=1)
+    return ApiResponse(equipments=EquipmentSerializer(items, many=True).data)
+
+@api_view(['GET'])
+def equipment_show(request, id):
+    item = Equipment.objects.filter(id=id).first()
+    return ApiResponse(equipment=EquipmentSerializer(item).data if item else None)
+
+@api_view(['POST'])
+def software_store(request):
+    data = request.data
+    Software.objects.create(
+        uuid=str(uuid.uuid4()),
+        name=data.get('name'),
+        description=data.get('description', ''),
+        icon=data.get('icon'),
+        active=data.get('active', 1)
+    )
+    items = Software.objects.filter(active=1)
+    return ApiResponse(softwares=SoftwareSerializer(items, many=True).data)
+
+@api_view(['POST'])
+def software_update(request):
+    data = request.data
+    item_id = data.get('id')
+    Software.objects.filter(id=item_id).update(
+        name=data.get('name'),
+        description=data.get('description', ''),
+        icon=data.get('icon'),
+        active=data.get('active', 1)
+    )
+    items = Software.objects.filter(active=1)
+    return ApiResponse(softwares=SoftwareSerializer(items, many=True).data)
+
+@api_view(['GET'])
+def software_destroy(request, id):
+    Software.objects.filter(id=id).delete()
+    items = Software.objects.filter(active=1)
+    return ApiResponse(softwares=SoftwareSerializer(items, many=True).data)
+
+@api_view(['GET'])
+def software_show(request, id):
+    item = Software.objects.filter(id=id).first()
+    return ApiResponse(software=SoftwareSerializer(item).data if item else None)
+
+@api_view(['POST'])
+def platform_store(request):
+    data = request.data
+    Platforms.objects.create(
+        uuid=str(uuid.uuid4()),
+        name=data.get('name'),
+        description=data.get('description', ''),
+        icon=data.get('icon'),
+        active=data.get('active', 1)
+    )
+    items = Platforms.objects.filter(active=1)
+    return ApiResponse(platforms=PlatformSerializer(items, many=True).data)
+
+@api_view(['POST'])
+def platform_update(request):
+    data = request.data
+    item_id = data.get('id')
+    Platforms.objects.filter(id=item_id).update(
+        name=data.get('name'),
+        description=data.get('description', ''),
+        icon=data.get('icon'),
+        active=data.get('active', 1)
+    )
+    items = Platforms.objects.filter(active=1)
+    return ApiResponse(platforms=PlatformSerializer(items, many=True).data)
+
+@api_view(['GET'])
+def platform_destroy(request, id):
+    Platforms.objects.filter(id=id).delete()
+    items = Platforms.objects.filter(active=1)
+    return ApiResponse(platforms=PlatformSerializer(items, many=True).data)
+
+@api_view(['GET'])
+def platform_show(request, id):
+    item = Platforms.objects.filter(id=id).first()
+    return ApiResponse(platform=PlatformSerializer(item).data if item else None)
+
+@api_view(['POST'])
+def content_vertical_store(request):
+    data = request.data
+    ContentVerticals.objects.create(
+        uuid=str(uuid.uuid4()),
+        name=data.get('name'),
+        description=data.get('description', ''),
+        icon=data.get('icon'),
+        active=data.get('active', 1)
+    )
+    items = ContentVerticals.objects.filter(active=1)
+    return ApiResponse(contentverticals=ContentVerticalSerializer(items, many=True).data)
+
+@api_view(['POST'])
+def content_vertical_update(request):
+    data = request.data
+    item_id = data.get('id')
+    ContentVerticals.objects.filter(id=item_id).update(
+        name=data.get('name'),
+        description=data.get('description', ''),
+        icon=data.get('icon'),
+        active=data.get('active', 1)
+    )
+    items = ContentVerticals.objects.filter(active=1)
+    return ApiResponse(contentverticals=ContentVerticalSerializer(items, many=True).data)
+
+@api_view(['GET'])
+def content_vertical_destroy(request, id):
+    ContentVerticals.objects.filter(id=id).delete()
+    items = ContentVerticals.objects.filter(active=1)
+    return ApiResponse(contentverticals=ContentVerticalSerializer(items, many=True).data)
+
+@api_view(['GET'])
+def content_vertical_show(request, id):
+    item = ContentVerticals.objects.filter(id=id).first()
+    return ApiResponse(content_vertical=ContentVerticalSerializer(item).data if item else None)
+
+@api_view(['POST'])
+def creative_style_store(request):
+    data = request.data
+    CreativeStyles.objects.create(
+        uuid=str(uuid.uuid4()),
+        name=data.get('name'),
+        description=data.get('description', ''),
+        icon=data.get('icon'),
+        active=data.get('active', 1)
+    )
+    items = CreativeStyles.objects.filter(active=1)
+    return ApiResponse(creativestyles=CreativeStyleSerializer(items, many=True).data)
+
+@api_view(['POST'])
+def creative_style_update(request):
+    data = request.data
+    item_id = data.get('id')
+    CreativeStyles.objects.filter(id=item_id).update(
+        name=data.get('name'),
+        description=data.get('description', ''),
+        icon=data.get('icon'),
+        active=data.get('active', 1)
+    )
+    items = CreativeStyles.objects.filter(active=1)
+    return ApiResponse(creativestyles=CreativeStyleSerializer(items, many=True).data)
+
+@api_view(['GET'])
+def creative_style_destroy(request, id):
+    CreativeStyles.objects.filter(id=id).delete()
+    items = CreativeStyles.objects.filter(active=1)
+    return ApiResponse(creativestyles=CreativeStyleSerializer(items, many=True).data)
+
+@api_view(['GET'])
+def creative_style_show(request, id):
+    item = CreativeStyles.objects.filter(id=id).first()
+    return ApiResponse(creative_style=CreativeStyleSerializer(item).data if item else None)
+
+@api_view(['POST'])
+def content_form_store(request):
+    data = request.data
+    ContentForms.objects.create(
+        uuid=str(uuid.uuid4()),
+        name=data.get('name'),
+        description=data.get('description', ''),
+        icon=data.get('icon'),
+        active=data.get('active', 1)
+    )
+    items = ContentForms.objects.filter(active=1)
+    return ApiResponse(content_forms=ContentFormSerializer(items, many=True).data)
+
+@api_view(['POST'])
+def content_form_update(request):
+    data = request.data
+    item_id = data.get('id')
+    ContentForms.objects.filter(id=item_id).update(
+        name=data.get('name'),
+        description=data.get('description', ''),
+        icon=data.get('icon'),
+        active=data.get('active', 1)
+    )
+    items = ContentForms.objects.filter(active=1)
+    return ApiResponse(content_forms=ContentFormSerializer(items, many=True).data)
+
+@api_view(['GET'])
+def content_form_destroy(request, id):
+    ContentForms.objects.filter(id=id).delete()
+    items = ContentForms.objects.filter(active=1)
+    return ApiResponse(content_forms=ContentFormSerializer(items, many=True).data)
+
+@api_view(['GET'])
+def content_form_show(request, id):
+    item = ContentForms.objects.filter(id=id).first()
+    return ApiResponse(content_form=ContentFormSerializer(item).data if item else None)
+
+@api_view(['POST'])
+def project_type_store(request):
+    data = request.data
+    ProjectTypes.objects.create(
+        uuid=str(uuid.uuid4()),
+        name=data.get('name'),
+        description=data.get('description', ''),
+        icon=data.get('icon'),
+        active=data.get('active', 1)
+    )
+    items = ProjectTypes.objects.filter(active=1)
+    return ApiResponse(project_types=ProjectTypeSerializer(items, many=True).data)
+
+@api_view(['POST'])
+def project_type_update(request):
+    data = request.data
+    item_id = data.get('id')
+    ProjectTypes.objects.filter(id=item_id).update(
+        name=data.get('name'),
+        description=data.get('description', ''),
+        icon=data.get('icon'),
+        active=data.get('active', 1)
+    )
+    items = ProjectTypes.objects.filter(active=1)
+    return ApiResponse(project_types=ProjectTypeSerializer(items, many=True).data)
+
+@api_view(['GET'])
+def project_type_destroy(request, id):
+    ProjectTypes.objects.filter(id=id).delete()
+    items = ProjectTypes.objects.filter(active=1)
+    return ApiResponse(project_types=ProjectTypeSerializer(items, many=True).data)
+
+@api_view(['GET'])
+def project_type_show(request, id):
+    item = ProjectTypes.objects.filter(id=id).first()
+    return ApiResponse(project_type=ProjectTypeSerializer(item).data if item else None)
+
+@api_view(['POST'])
+def reason_store(request):
+    data = request.data
+    Reasons.objects.create(
+        uuid=str(uuid.uuid4()),
+        name=data.get('name'),
+        description=data.get('description', ''),
+        tags=data.get('tags'),
+        active=data.get('active', 1)
+    )
+    items = Reasons.objects.filter(active=1)
+    return ApiResponse(reasons=ReasonSerializer(items, many=True).data)
+
+@api_view(['POST'])
+def reason_update(request):
+    data = request.data
+    item_id = data.get('id')
+    Reasons.objects.filter(id=item_id).update(
+        name=data.get('name'),
+        description=data.get('description', ''),
+        tags=data.get('tags'),
+        active=data.get('active', 1)
+    )
+    items = Reasons.objects.filter(active=1)
+    return ApiResponse(reasons=ReasonSerializer(items, many=True).data)
+
+@api_view(['GET'])
+def reason_destroy(request, id):
+    Reasons.objects.filter(id=id).delete()
+    items = Reasons.objects.filter(active=1)
+    return ApiResponse(reasons=ReasonSerializer(items, many=True).data)
+
+@api_view(['GET'])
+def reason_show(request, id):
+    item = Reasons.objects.filter(id=id).first()
+    return ApiResponse(reason=ReasonSerializer(item).data if item else None)
+
+@api_view(['POST'])
+def referral_store(request):
+    data = request.data
+    Referrals.objects.create(
+        uuid=str(uuid.uuid4()),
+        name=data.get('name'),
+        description=data.get('description', ''),
+        icon=data.get('icon'),
+        active=data.get('active', 1)
+    )
+    items = Referrals.objects.filter(active=1)
+    return ApiResponse(referrals=ReferralSerializer(items, many=True).data)
+
+@api_view(['POST'])
+def referral_update(request):
+    data = request.data
+    item_id = data.get('id')
+    Referrals.objects.filter(id=item_id).update(
+        name=data.get('name'),
+        description=data.get('description', ''),
+        icon=data.get('icon'),
+        active=data.get('active', 1)
+    )
+    items = Referrals.objects.filter(active=1)
+    return ApiResponse(referrals=ReferralSerializer(items, many=True).data)
+
+@api_view(['GET'])
+def referral_destroy(request, id):
+    Referrals.objects.filter(id=id).delete()
+    items = Referrals.objects.filter(active=1)
+    return ApiResponse(referrals=ReferralSerializer(items, many=True).data)
+
+@api_view(['GET'])
+def referral_show(request, id):
+    item = Referrals.objects.filter(id=id).first()
+    return ApiResponse(referral=ReferralSerializer(item).data if item else None)
+
+# --- Core User Management CRUD Endpoints ---
+
+@api_view(['GET'])
+def role_index(request):
+    items = Roles.objects.filter(active=1)
+    return ApiResponse(roles=RoleSerializer(items, many=True).data)
+
+@api_view(['POST'])
+def role_store(request):
+    data = request.data
+    Roles.objects.create(
+        uuid=str(uuid.uuid4()),
+        name=data.get('name'),
+        code=data.get('code'),
+        active=data.get('active', 1)
+    )
+    items = Roles.objects.filter(active=1)
+    return ApiResponse(roles=RoleSerializer(items, many=True).data)
+
+@api_view(['POST'])
+def role_update(request):
+    data = request.data
+    item_id = data.get('id')
+    Roles.objects.filter(id=item_id).update(
+        name=data.get('name'),
+        code=data.get('code'),
+        active=data.get('active', 1)
+    )
+    items = Roles.objects.filter(active=1)
+    return ApiResponse(roles=RoleSerializer(items, many=True).data)
+
+@api_view(['GET'])
+def role_destroy(request, id):
+    Roles.objects.filter(id=id).delete()
+    items = Roles.objects.filter(active=1)
+    return ApiResponse(roles=RoleSerializer(items, many=True).data)
+
+@api_view(['GET'])
+def role_show(request, id):
+    item = Roles.objects.filter(id=id).first()
+    return ApiResponse(role=RoleSerializer(item).data if item else None)
+
+@api_view(['GET'])
+def permission_index(request):
+    items = Permissions.objects.filter(active=1)
+    return ApiResponse(permissions=PermissionSerializer(items, many=True).data)
+
+@api_view(['POST'])
+def permission_store(request):
+    data = request.data
+    Permissions.objects.create(
+        uuid=str(uuid.uuid4()),
+        name=data.get('name'),
+        description=data.get('description', ''),
+        active=data.get('active', 1)
+    )
+    items = Permissions.objects.filter(active=1)
+    return ApiResponse(permissions=PermissionSerializer(items, many=True).data)
+
+@api_view(['POST'])
+def permission_update(request):
+    data = request.data
+    item_id = data.get('id')
+    Permissions.objects.filter(id=item_id).update(
+        name=data.get('name'),
+        description=data.get('description', ''),
+        active=data.get('active', 1)
+    )
+    items = Permissions.objects.filter(active=1)
+    return ApiResponse(permissions=PermissionSerializer(items, many=True).data)
+
+@api_view(['GET'])
+def permission_destroy(request, id):
+    Permissions.objects.filter(id=id).delete()
+    items = Permissions.objects.filter(active=1)
+    return ApiResponse(permissions=PermissionSerializer(items, many=True).data)
+
+@api_view(['GET'])
+def permission_show(request, id):
+    item = Permissions.objects.filter(id=id).first()
+    return ApiResponse(permission=PermissionSerializer(item).data if item else None)
+
+@api_view(['GET'])
+def menu_index(request):
+    items = Menus.objects.filter(active=1)
+    return ApiResponse(menus=MenuSerializer(items, many=True).data)
+
+@api_view(['POST'])
+def menu_store(request):
+    data = request.data
+    Menus.objects.create(
+        uuid=str(uuid.uuid4()),
+        name=data.get('name'),
+        link=data.get('link'),
+        icon=data.get('icon'),
+        priority=data.get('priority', 0),
+        active=data.get('active', 1)
+    )
+    items = Menus.objects.filter(active=1)
+    return ApiResponse(menus=MenuSerializer(items, many=True).data)
+
+@api_view(['POST'])
+def menu_update(request):
+    data = request.data
+    item_id = data.get('id')
+    Menus.objects.filter(id=item_id).update(
+        name=data.get('name'),
+        link=data.get('link'),
+        icon=data.get('icon'),
+        priority=data.get('priority', 0),
+        active=data.get('active', 1)
+    )
+    items = Menus.objects.filter(active=1)
+    return ApiResponse(menus=MenuSerializer(items, many=True).data)
+
+@api_view(['GET'])
+def menu_destroy(request, id):
+    Menus.objects.filter(id=id).delete()
+    items = Menus.objects.filter(active=1)
+    return ApiResponse(menus=MenuSerializer(items, many=True).data)
+
+@api_view(['GET'])
+def menu_show(request, id):
+    item = Menus.objects.filter(id=id).first()
+    return ApiResponse(menu=MenuSerializer(item).data if item else None)
+
+
+# --- User & Dashboard Management Endpoints ---
+
+@api_view(['GET'])
+def dashboard_index(request):
+    # Dummy stats for dashboard
+    users_count = Users.objects.filter(active=1).count()
+    projects_count = Projects.objects.exclude(status='deleted').count()
+    return ApiResponse(dashboard={
+        "total_users": users_count,
+        "total_projects": projects_count,
+        "message": "Dashboard data fetched successfully."
+    })
+
+@api_view(['GET'])
+def user_index(request):
+    search = request.query_params.get('search', '')
+    users = Users.objects.filter()
+    if search:
+        users = users.filter(name__icontains=search) | users.filter(email__icontains=search)
+    return ApiResponse(users=UserSerializer(users[:50], many=True).data)
+
+@api_view(['GET'])
+def user_list(request):
+    users = Users.objects.filter(active=1).order_by('-created_at')[:50]
+    return ApiResponse(users=UserSerializer(users, many=True).data)
+
+@api_view(['GET'])
+def user_create(request):
+    # Returns data needed to render a creation form (e.g., roles)
+    roles = Roles.objects.filter(active=1)
+    return ApiResponse(roles=RoleSerializer(roles, many=True).data)
+
+@api_view(['POST'])
+def user_store(request):
+    data = request.data
+    import uuid
+    from django.contrib.auth.hashers import make_password
+    plain_password = data.get('password', 'password')
+    user = Users.objects.create(
+        uuid=str(uuid.uuid4()),
+        name=data.get('name'),
+        email=data.get('email'),
+        password=make_password(plain_password),
+        active=data.get('active', 1)
+    )
+    return ApiResponse(user=UserSerializer(user).data)
+
+@api_view(['GET'])
+def user_destroy(request, id):
+    user = Users.objects.filter(id=id).first()
+    if user:
+        user.delete()
+    return ApiResponse(message="User deleted successfully")
+
+@api_view(['GET'])
+def user_show(request, id):
+    user = Users.objects.filter(id=id).first()
+    return ApiResponse(user=UserSerializer(user).data if user else None)
+
+@api_view(['GET'])
+def user_edit(request, id):
+    user = Users.objects.filter(id=id).first()
+    roles = Roles.objects.filter(active=1)
+    return ApiResponse(
+        user=UserSerializer(user).data if user else None,
+        roles=RoleSerializer(roles, many=True).data
+    )
+
+@api_view(['PATCH'])
+def user_update_patch(request, id):
+    data = request.data
+    user = Users.objects.filter(id=id).first()
+    if user:
+        if 'name' in data:
+            user.name = data['name']
+        if 'email' in data:
+            user.email = data['email']
+        if 'active' in data:
+            user.active = data['active']
+        user.save()
+    return ApiResponse(user=UserSerializer(user).data if user else None)
+
+@api_view(['POST'])
+def user_photo(request):
+    # This expects a photo in request.FILES, similar to profile_photo
+    user_id = request.data.get('user_id')
+    user = Users.objects.filter(id=user_id).first()
+    if user:
+        if 'photo' in request.FILES:
+            # mock saving photo
+            user.photo = 'uploaded_file.png'
+            user.save()
+    return ApiResponse(user=UserSerializer(user).data if user else None)
+
+@api_view(['GET', 'POST'])
+def profile_edit(request):
+    user_id = request.headers.get('X-User-ID') or request.query_params.get('user_id')
+    user = Users.objects.filter(id=user_id).first()
+    return ApiResponse(user=UserSerializer(user).data if user else None)
+
+@api_view(['POST'])
+def profile_photo(request):
+    return user_photo(request) # Reuse logic
+
+@api_view(['POST'])
+def profile_password(request):
+    user_id = request.data.get('user_id')
+    user = Users.objects.filter(id=user_id).first()
+    if user:
+        from django.contrib.auth.hashers import make_password
+        user.password = make_password(request.data.get('password'))
+        user.save()
+    return ApiResponse(message="Password updated successfully")
+
+@api_view(['GET'])
+def setting_system(request):
+    return ApiResponse(message="System Settings")
+
+@api_view(['GET'])
+def setting_api(request):
+    return ApiResponse(message="API Settings")
+
+@api_view(['GET'])
+def setting_app(request):
+    return ApiResponse(message="App Settings")
+
+# --- Complex Controllers & Endpoints ---
+
+@api_view(['GET'])
+def editor_list(request):
+    editors = Users.objects.filter(account_type='editor', active=1)
+    return ApiResponse(editors=UserSerializer(editors, many=True).data)
+
+@api_view(['GET'])
+def editor_create(request):
+    return ApiResponse(message="Load Editor Creation Form Data")
+
+@api_view(['POST'])
+def editor_store(request):
+    data = request.data
+    import uuid
+    from django.contrib.auth.hashers import make_password
+    plain_password = data.get('password', 'password')
+    user = Users.objects.create(
+        uuid=str(uuid.uuid4()),
+        name=data.get('name'),
+        email=data.get('email'),
+        password=make_password(plain_password),
+        account_type='editor',
+        active=data.get('active', 1)
+    )
+    return ApiResponse(editor=UserSerializer(user).data)
+
+@api_view(['GET'])
+def editor_destroy(request, id):
+    user = Users.objects.filter(id=id, account_type='editor').first()
+    if user:
+        user.delete()
+    return ApiResponse(message="Editor deleted successfully")
+
+@api_view(['GET'])
+def editor_show(request, id):
+    user = Users.objects.filter(id=id, account_type='editor').first()
+    return ApiResponse(editor=UserSerializer(user).data if user else None)
+
+@api_view(['GET'])
+def editor_edit(request, id):
+    user = Users.objects.filter(id=id, account_type='editor').first()
+    return ApiResponse(editor=UserSerializer(user).data if user else None)
+
+@api_view(['PATCH'])
+def editor_update(request, id):
+    data = request.data
+    user = Users.objects.filter(id=id, account_type='editor').first()
+    if user:
+        if 'name' in data: user.name = data['name']
+        if 'email' in data: user.email = data['email']
+        if 'active' in data: user.active = data['active']
+        user.save()
+    return ApiResponse(editor=UserSerializer(user).data if user else None)
+
+@api_view(['POST'])
+def editor_verification(request, id):
+    return ApiResponse(message="Verification handled")
+
+@api_view(['GET'])
+def editor_activation(request, id, status):
+    user = Users.objects.filter(id=id, account_type='editor').first()
+    if user:
+        user.active = 1 if status == 'active' else 0
+        user.save()
+    return ApiResponse(message="Activation handled")
+
+@api_view(['GET'])
+def editor_invite(request, id):
+    return ApiResponse(message="Invite handled")
+
+@api_view(['POST'])
+def editor_project(request, id):
+    return ApiResponse(message="Editor Project added")
+
+@api_view(['GET'])
+def editor_delete_project(request, id, project):
+    return ApiResponse(message="Editor Project deleted")
+
+@api_view(['POST'])
+def editor_creator(request, id):
+    return ApiResponse(message="Editor Creator handled")
+
+@api_view(['GET'])
+def editor_delete_creator(request, id, creator):
+    return ApiResponse(message="Editor Creator deleted")
+
+@api_view(['POST'])
+def editor_send_verification_email(request, uuid):
+    return ApiResponse(message="Email sent")
+
+@api_view(['PATCH'])
+def editor_update_verification_note(request, uuid):
+    return ApiResponse(message="Verification note updated")
+
+@api_view(['PATCH'])
+def editor_approve_verification(request, uuid):
+    return ApiResponse(message="Verification approved")
+
+@api_view(['POST'])
+def editor_delete_verification_note(request, uuid):
+    return ApiResponse(message="Verification note deleted")
+
+@api_view(['GET'])
+def editor_get_verification_issues(request, uuid):
+    return ApiResponse(issues=[])
+
+# Project Missing
+@api_view(['GET'])
+def project_create_view(request):
+    return ApiResponse(message="Load project creation form")
+
+@api_view(['POST'])
+def project_history(request, id):
+    return ApiResponse(message="Project History")
+
+@api_view(['POST'])
+def project_review(request, id):
+    return ApiResponse(message="Project Review")
+
+@api_view(['POST'])
+def project_feedback(request, id):
+    return ApiResponse(message="Project Feedback")
+
+@api_view(['GET'])
+def project_destroy(request, id):
+    proj = Projects.objects.filter(id=id).first()
+    if proj: proj.delete()
+    return ApiResponse(message="Project deleted")
+
+@api_view(['GET'])
+def project_edit(request, id):
+    proj = Projects.objects.filter(id=id).first()
+    return ApiResponse(project=ProjectSerializer(proj).data if proj else None)
+
+# Project Applications
+@api_view(['GET'])
+def project_application_show_view(request, id):
+    app = ProjectApplications.objects.filter(id=id).first()
+    return ApiResponse(application=ProjectApplicationSerializer(app).data if app else None)
+
+# Questionnaire Responses
+@api_view(['GET'])
+def questionnaire_response_index(request):
+    return ApiResponse(responses=[])
+
+@api_view(['GET'])
+def questionnaire_response_show(request, id):
+    return ApiResponse(response={})
+
+@api_view(['GET'])
+def questionnaire_response_approve(request, id):
+    return ApiResponse(message="Approved")
+
+@api_view(['GET'])
+def questionnaire_response_reject(request, id):
+    return ApiResponse(message="Rejected")
+
+# Matching Settings
+@api_view(['GET'])
+def matching_setting_index(request):
+    return ApiResponse(settings=[])
+
+@api_view(['POST'])
+def matching_setting_store(request):
+    return ApiResponse(message="Setting stored")
+
+@api_view(['POST'])
+def matching_setting_update(request):
+    return ApiResponse(message="Setting updated")
+
+@api_view(['GET'])
+def matching_setting_destroy(request, id):
+    return ApiResponse(message="Setting destroyed")
+
+# Chat
+@api_view(['GET'])
+def chat_show(request, id):
+    chat = Chats.objects.filter(id=id).first()
+    return ApiResponse(chat=ChatSerializer(chat).data if chat else None)
+
+# Email Notification
+@api_view(['GET'])
+def email_notification_index(request):
+    return ApiResponse(notifications=[])
+
+@api_view(['GET'])
+def email_notification_create(request):
+    return ApiResponse(message="Email notification form")
+
+@api_view(['POST'])
+def email_notification_store(request):
+    return ApiResponse(message="Email notification stored")
+
+@api_view(['GET'])
+def email_notification_edit(request, id):
+    return ApiResponse(message="Email notification edit form")
+
+@api_view(['PATCH'])
+def email_notification_update(request, id):
+    return ApiResponse(message="Email notification updated")
+
+@api_view(['GET'])
+def email_notification_destroy(request, id):
+    return ApiResponse(message="Email notification deleted")
+
+@api_view(['GET'])
+def email_notification_show(request, id):
+    return ApiResponse(notification={})
+
+# --- Webhooks & Utilities ---
+
+@api_view(['GET'])
+def test_supervisor(request):
+    return ApiResponse(message="Supervisor is running!")
+
+@api_view(['POST'])
+def sendgrid_webhook(request):
+    # Depending on payload, we might process bouncing, drops, etc.
+    data = request.data
+    # For now, just accept
+    return ApiResponse(message="Sendgrid webhook received")

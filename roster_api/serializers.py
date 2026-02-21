@@ -13,7 +13,7 @@ from .models import (
     Projects, Matchings, MatchingEditors, MatchingSkills, MatchingPlatforms,
     MatchingSoftware, MatchingContentVerticals, MatchingCreativeStyles,
     MatchingJobTypes, Chats, ChatMessages, UserFavourites, ProfileVisits,
-    Setting, Files
+    Setting, Files, Permissions, Menus
 )
 
 
@@ -338,3 +338,14 @@ class PaymentStatusSerializer(serializers.ModelSerializer):
     class Meta:
         model = PaymentStatuses
         fields = '__all__'
+
+class PermissionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Permissions
+        fields = '__all__'
+
+class MenuSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Menus
+        fields = '__all__'
+

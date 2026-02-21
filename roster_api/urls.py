@@ -31,6 +31,57 @@ from .views import (
     content_forms_index, project_types_index, project_types_user_index, reasons_index, referrals_index,
     settings_index, settings_store, settings_update, settings_destroy
 )
+
+from .views import (
+    skill_store, skill_update, skill_destroy, skill_show,
+    job_types_store, job_types_update, job_types_destroy, job_types_show,
+    equipment_store, equipment_update, equipment_destroy, equipment_show,
+    software_store, software_update, software_destroy, software_show,
+    platform_store, platform_update, platform_destroy, platform_show,
+    content_vertical_store, content_vertical_update, content_vertical_destroy, content_vertical_show,
+    creative_style_store, creative_style_update, creative_style_destroy, creative_style_show,
+    content_form_store, content_form_update, content_form_destroy, content_form_show,
+    project_type_store, project_type_update, project_type_destroy, project_type_show,
+    reason_store, reason_update, reason_destroy, reason_show,
+    referral_store, referral_update, referral_destroy, referral_show
+)
+
+
+from .views import (
+    role_index, role_store, role_update, role_destroy, role_show,
+    permission_index, permission_store, permission_update, permission_destroy, permission_show,
+    menu_index, menu_store, menu_update, menu_destroy, menu_show
+)
+
+
+from .views import (
+    dashboard_index, user_index, user_list, user_create, user_store,
+    user_destroy, user_show, user_edit, user_update_patch, user_photo,
+    profile_edit, profile_photo, profile_password,
+    setting_system, setting_api, setting_app
+)
+
+
+from .views import (
+    editor_list, editor_create, editor_store, editor_destroy, editor_show, editor_edit,
+    editor_update, editor_verification, editor_activation, editor_invite, editor_project,
+    editor_delete_project, editor_creator, editor_delete_creator, editor_send_verification_email,
+    editor_update_verification_note, editor_approve_verification, editor_delete_verification_note,
+    editor_get_verification_issues,
+    project_create_view, project_history, project_review, project_feedback, project_destroy, project_edit,
+    project_application_show_view,
+    questionnaire_response_index, questionnaire_response_show, questionnaire_response_approve, questionnaire_response_reject,
+    matching_setting_index, matching_setting_store, matching_setting_update, matching_setting_destroy,
+    chat_show,
+    email_notification_index, email_notification_create, email_notification_store, email_notification_edit,
+    email_notification_update, email_notification_destroy, email_notification_show
+)
+
+
+from .views import (
+    test_supervisor, sendgrid_webhook
+)
+
 from . import views # Keep this for views.test_api
 
 urlpatterns = [
@@ -240,4 +291,164 @@ urlpatterns = [
     path('file/signed-url/<filename>', views.file_get_signed_url, name='file_get_signed_url'),
     path('file/serve/<id>', views.file_serve, name='file_serve'),
     path('file/download/<id>', views.file_download, name='file_download'),
+
+    # --- Taxonomy CRUD Endpoints ---
+
+    path('skill/add', skill_store, name='skill_store'),
+    path('skill/update', skill_update, name='skill_update'),
+    path('skill/delete/<int:id>', skill_destroy, name='skill_destroy'),
+    path('skill/<int:id>', skill_show, name='skill_show'),
+
+    path('job-type/add', job_types_store, name='job_types_store'),
+    path('job-type/update', job_types_update, name='job_types_update'),
+    path('job-type/delete/<int:id>', job_types_destroy, name='job_types_destroy'),
+    path('job-type/<int:id>', job_types_show, name='job_types_show'),
+
+    path('equipment/add', equipment_store, name='equipment_store'),
+    path('equipment/update', equipment_update, name='equipment_update'),
+    path('equipment/delete/<int:id>', equipment_destroy, name='equipment_destroy'),
+    path('equipment/<int:id>', equipment_show, name='equipment_show'),
+
+    path('software/add', software_store, name='software_store'),
+    path('software/update', software_update, name='software_update'),
+    path('software/delete/<int:id>', software_destroy, name='software_destroy'),
+    path('software/<int:id>', software_show, name='software_show'),
+
+    path('platform/add', platform_store, name='platform_store'),
+    path('platform/update', platform_update, name='platform_update'),
+    path('platform/delete/<int:id>', platform_destroy, name='platform_destroy'),
+    path('platform/<int:id>', platform_show, name='platform_show'),
+
+    path('content-vertical/add', content_vertical_store, name='content_vertical_store'),
+    path('content-vertical/update', content_vertical_update, name='content_vertical_update'),
+    path('content-vertical/delete/<int:id>', content_vertical_destroy, name='content_vertical_destroy'),
+    path('content-vertical/<int:id>', content_vertical_show, name='content_vertical_show'),
+
+    path('creative-style/add', creative_style_store, name='creative_style_store'),
+    path('creative-style/update', creative_style_update, name='creative_style_update'),
+    path('creative-style/delete/<int:id>', creative_style_destroy, name='creative_style_destroy'),
+    path('creative-style/<int:id>', creative_style_show, name='creative_style_show'),
+
+    path('content-form/add', content_form_store, name='content_form_store'),
+    path('content-form/update', content_form_update, name='content_form_update'),
+    path('content-form/delete/<int:id>', content_form_destroy, name='content_form_destroy'),
+    path('content-form/<int:id>', content_form_show, name='content_form_show'),
+
+    path('project-type/add', project_type_store, name='project_type_store'),
+    path('project-type/update', project_type_update, name='project_type_update'),
+    path('project-type/delete/<int:id>', project_type_destroy, name='project_type_destroy'),
+    path('project-type/<int:id>', project_type_show, name='project_type_show'),
+
+    path('reason/add', reason_store, name='reason_store'),
+    path('reason/update', reason_update, name='reason_update'),
+    path('reason/delete/<int:id>', reason_destroy, name='reason_destroy'),
+    path('reason/<int:id>', reason_show, name='reason_show'),
+
+    path('referral/add', referral_store, name='referral_store'),
+    path('referral/update', referral_update, name='referral_update'),
+    path('referral/delete/<int:id>', referral_destroy, name='referral_destroy'),
+    path('referral/<int:id>', referral_show, name='referral_show'),
+
+
+    # --- Core User Management Endpoints ---
+    path('role', role_index, name='role_index'),
+    path('role/add', role_store, name='role_store'),
+    path('role/update', role_update, name='role_update'),
+    path('role/delete/<int:id>', role_destroy, name='role_destroy'),
+    path('role/<int:id>', role_show, name='role_show'),
+
+    path('permission', permission_index, name='permission_index'),
+    path('permission/add', permission_store, name='permission_store'),
+    path('permission/update', permission_update, name='permission_update'),
+    path('permission/delete/<int:id>', permission_destroy, name='permission_destroy'),
+    path('permission/<int:id>', permission_show, name='permission_show'),
+
+    path('menu', menu_index, name='menu_index'),
+    path('menu/add', menu_store, name='menu_store'),
+    path('menu/update', menu_update, name='menu_update'),
+    path('menu/delete/<int:id>', menu_destroy, name='menu_destroy'),
+    path('menu/<int:id>', menu_show, name='menu_show'),
+
+
+    path('dashboard', dashboard_index, name='dashboard_index'),
+    path('user', user_index, name='user_index_main'),
+    path('user/list', user_list, name='user_list'),
+    path('user/add', user_create, name='user_create_form'),
+    path('user/store', user_store, name='user_store_new'),
+    path('user/delete/<int:id>', user_destroy, name='user_destroy_id'),
+    path('user/<int:id>', user_show, name='user_show_id'),
+    path('user/<int:id>/edit', user_edit, name='user_edit_id'),
+    path('user/<int:id>/patch', user_update_patch, name='user_update_patch_id'), # We mapped PATCH /user/{id} to this logic
+    path('user/photo', user_photo, name='user_photo'),
+    
+    path('profile/edit', profile_edit, name='profile_edit'),
+    path('profile/photo', profile_photo, name='profile_photo'),
+    path('profile/password', profile_password, name='profile_password'),
+    
+    path('setting/system', setting_system, name='setting_system'),
+    path('setting/api', setting_api, name='setting_api'),
+    path('setting/app', setting_app, name='setting_app'),
+
+
+    # Editor Controller Detailed
+    path('editor/list', editor_list, name='editor_list'),
+    path('editor/add', editor_create, name='editor_create_form'),
+    path('editor/store', editor_store, name='editor_store_new'),
+    path('editor/delete/<int:id>', editor_destroy, name='editor_destroy_id'),
+    path('editor/<int:id>', editor_show, name='editor_show_id'),
+    path('editor/<int:id>/edit', editor_edit, name='editor_edit_id'),
+    path('editor/<int:id>/patch', editor_update, name='editor_update_patch'),
+    path('editor/<int:id>/verification', editor_verification, name='editor_verification'),
+    path('editor/<int:id>/activation/<status>', editor_activation, name='editor_activation'),
+    path('editor/<int:id>/invite', editor_invite, name='editor_invite'),
+    path('editor/<int:id>/project', editor_project, name='editor_project'),
+    path('editor/<int:id>/project/delete/<int:project>', editor_delete_project, name='editor_delete_project'),
+    path('editor/<int:id>/creator', editor_creator, name='editor_creator'),
+    path('editor/<int:id>/creator/delete/<int:creator>', editor_delete_creator, name='editor_delete_creator'),
+    path('editor/<uuid>/verification/send-email', editor_send_verification_email, name='editor_send_verification_email'),
+    path('editor/verification/<uuid>/note', editor_update_verification_note, name='editor_update_verification_note'),
+    path('editor/verification/<uuid>/approve', editor_approve_verification, name='editor_approve_verification'),
+    path('editor/verification/<uuid>/note/delete', editor_delete_verification_note, name='editor_delete_verification_note'),
+    path('editor/<uuid>/verification-issues', editor_get_verification_issues, name='editor_get_verification_issues'),
+
+    # Project Extensions
+    path('project/add', project_create_view, name='project_add_form'),
+    path('project/history/<int:id>', project_history, name='project_history_id'),
+    path('project/review/<int:id>', project_review, name='project_review_id'),
+    path('project/feedback/<int:id>', project_feedback, name='project_feedback_id'),
+    path('project/delete/<int:id>', project_destroy, name='project_destroy_id'),
+    path('project/<int:id>/edit', project_edit, name='project_edit_id'),
+
+    # Project Application Extensions
+    path('project-application/<int:id>', project_application_show_view, name='project_application_show_view'),
+
+    # Questionnaire Responses
+    path('questionnaire-response', questionnaire_response_index, name='questionnaire_response_index'),
+    path('questionnaire-response/<int:id>', questionnaire_response_show, name='questionnaire_response_show'),
+    path('questionnaire-response/approve/<int:id>', questionnaire_response_approve, name='questionnaire_response_approve'),
+    path('questionnaire-response/reject/<int:id>', questionnaire_response_reject, name='questionnaire_response_reject'),
+
+    # Matching Settings
+    path('matching/setting', matching_setting_index, name='matching_setting_index'),
+    path('matching/setting/add', matching_setting_store, name='matching_setting_store'),
+    path('matching/setting/update', matching_setting_update, name='matching_setting_update'),
+    path('matching/setting/delete/<int:id>', matching_setting_destroy, name='matching_setting_destroy'),
+
+    # Chat Extensions
+    path('chat/<int:id>', chat_show, name='chat_show_id'),
+
+    # Email Notifications
+    path('email-notification', email_notification_index, name='email_notification_index'),
+    path('email-notification/add', email_notification_create, name='email_notification_create'),
+    path('email-notification/store', email_notification_store, name='email_notification_store'),
+    path('email-notification/<int:id>/edit', email_notification_edit, name='email_notification_edit'),
+    path('email-notification/<int:id>', email_notification_update, name='email_notification_update'),
+    path('email-notification/delete/<int:id>', email_notification_destroy, name='email_notification_destroy'),
+    path('email-notification/show/<int:id>', email_notification_show, name='email_notification_show'),
+
+
+    # Webhooks & Utilities
+    path('test-supervisor', test_supervisor, name='test_supervisor'),
+    path('webhooks/sendgrid', sendgrid_webhook, name='sendgrid_webhook'),
+
 ]
