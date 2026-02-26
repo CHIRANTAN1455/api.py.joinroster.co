@@ -13,7 +13,9 @@ from .models import (
     Projects, Matchings, MatchingEditors, MatchingSkills, MatchingPlatforms,
     MatchingSoftware, MatchingContentVerticals, MatchingCreativeStyles,
     MatchingJobTypes, Chats, ChatMessages, UserFavourites, ProfileVisits,
-    Setting, Files, Permissions, Menus
+    Setting, Files, Permissions, Menus, ReferralCodes, UserTodos,
+    ProjectMilestones, ProjectReferences, ProjectHistories,
+    ProjectFeedbackUsers, ProjectFeedbackEditors, Transactions
 )
 
 
@@ -244,10 +246,78 @@ class UserVerificationLinkSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
+class ProjectMilestoneSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProjectMilestones
+        fields = '__all__'
+
+
+class ProjectReferenceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProjectReferences
+        fields = '__all__'
+
+
+class ProjectHistorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProjectHistories
+        fields = '__all__'
+
+
 class ProjectSerializer(serializers.ModelSerializer):
+    user = serializers.SerializerMethodField()
+    editor = serializers.SerializerMethodField()
+    milestones = ProjectMilestoneSerializer(many=True, read_only=True)
+    content_forms = ContentFormSerializer(many=True, read_only=True)
+    platforms = PlatformSerializer(many=True, read_only=True)
+    previous_references = serializers.SerializerMethodField()
+    inspiration_references = serializers.SerializerMethodField()
+    history = ProjectHistorySerializer(many=True, read_only=True)
+    budget_text = serializers.SerializerMethodField()
+
     class Meta:
         model = Projects
         fields = '__all__'
+
+    def get_user(self, obj):
+        user = obj.user
+        return {
+            'id': user.uuid,
+            'photo': user.photo,
+            'name': user.name,
+            'first_name': user.first_name,
+            'last_name': user.last_name,
+            'username': user.username,
+            'fun_fact': user.fun_fact,
+            'job_title': user.job_title,
+        }
+
+    def get_editor(self, obj):
+        editor = obj.editor
+        if not editor:
+            return []
+        return {
+            'id': editor.uuid,
+            'photo': editor.photo,
+            'name': editor.name,
+            'first_name': editor.first_name,
+            'last_name': editor.last_name,
+            'username': editor.username,
+            'fun_fact': editor.fun_fact,
+            'job_title': editor.job_title,
+            'address': editor.address,
+        }
+
+    def get_previous_references(self, obj):
+        return ProjectReferenceSerializer(obj.references.filter(type='previous'), many=True).data
+
+    def get_inspiration_references(self, obj):
+        return ProjectReferenceSerializer(obj.references.filter(type='inspiration'), many=True).data
+
+    def get_budget_text(self, obj):
+        if obj.budget:
+            return f"${obj.budget:,.2f}"
+        return None
 
 
 class MatchingSerializer(serializers.ModelSerializer):
@@ -349,3 +419,49 @@ class MenuSerializer(serializers.ModelSerializer):
         model = Menus
         fields = '__all__'
 
+
+class UserTodoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserTodos
+        fields = '__all__'
+
+
+class ReferralCodeUserSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Users
+        fields = ['email', 'first_name', 'last_name', 'created_at', 'account_type', 'activated_at', 'username']
+
+
+class ReferralCodeSerializer(serializers.ModelSerializer):
+    user = ReferralCodeUserSerializer(read_only=True)
+    referral_discount_amount = serializers.IntegerField(source='referrer.referral_discount_amount', read_only=True)
+    referral_discount_type = serializers.CharField(source='referrer.referral_discount_type', read_only=True)
+    referral_discount_interval = serializers.IntegerField(source='referrer.referral_discount_interval', read_only=True)
+    discount_code = serializers.CharField(source='referrer.discount_code', read_only=True)
+    referrer_id = serializers.CharField(source='referrer.uuid', read_only=True)
+
+    class Meta:
+        model = ReferralCodes
+        fields = [
+            'id', 'uuid', 'code', 'user', 'credit_for_referrer', 'credit_for_referred_user',
+            'created_at', 'referrer_id', 'referral_discount_amount',
+            'referral_discount_type', 'referral_discount_interval', 'discount_code'
+        ]
+
+
+class ProjectFeedbackUserSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProjectFeedbackUsers
+        fields = '__all__'
+
+
+class ProjectFeedbackEditorSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProjectFeedbackEditors
+        fields = '__all__'
+
+
+class TransactionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Transactions
+        fields = '__all__'

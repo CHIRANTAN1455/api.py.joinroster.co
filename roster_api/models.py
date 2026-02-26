@@ -1545,12 +1545,130 @@ class Transactions(models.Model):
 class ReferralCodes(models.Model):
     id = models.BigAutoField(primary_key=True)
     uuid = models.CharField(max_length=36, blank=True, null=True)
-    user = models.ForeignKey('Users', models.DO_NOTHING)
+    user = models.ForeignKey('Users', models.DO_NOTHING, related_name='received_referral_codes')
     code = models.CharField(max_length=255, blank=True, null=True)
-    referrer_id = models.BigIntegerField(blank=True, null=True)
+    referrer = models.ForeignKey('Users', models.DO_NOTHING, blank=True, null=True, db_column='referrer_id', related_name='given_referral_codes')
+    claim_reward = models.IntegerField(default=0)
+    credit_for_referrer = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    claim_reward_by_referred_user = models.IntegerField(default=0)
+    credit_for_referred_user = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     created_at = models.DateTimeField(blank=True, null=True)
     updated_at = models.DateTimeField(blank=True, null=True)
+    deleted_at = models.DateTimeField(blank=True, null=True)
 
     class Meta:
         managed = False
         db_table = 'referral_codes'
+
+
+class UserTodos(models.Model):
+    id = models.BigAutoField(primary_key=True)
+    uuid = models.CharField(max_length=36, blank=True, null=True)
+    user = models.ForeignKey('Users', models.DO_NOTHING)
+    list = models.JSONField(blank=True, null=True)
+    status = models.CharField(max_length=255, default='incomplete')
+    updated_at = models.DateTimeField(blank=True, null=True)
+    created_at = models.DateTimeField(blank=True, null=True)
+    deleted_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = 'user_todos'
+
+
+class ProjectMilestones(models.Model):
+    id = models.BigAutoField(primary_key=True)
+    uuid = models.CharField(max_length=36)
+    project = models.ForeignKey('Projects', models.DO_NOTHING, related_name='milestones')
+    title = models.CharField(max_length=255)
+    description = models.CharField(max_length=255)
+    average_turnaround_time = models.IntegerField()
+    priority = models.IntegerField()
+    status = models.CharField(max_length=255)
+    created_at = models.DateTimeField(blank=True, null=True)
+    updated_at = models.DateTimeField(blank=True, null=True)
+    deleted_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = 'project_milestones'
+
+
+class ProjectReferences(models.Model):
+    id = models.BigAutoField(primary_key=True)
+    uuid = models.CharField(max_length=36)
+    project = models.ForeignKey('Projects', models.DO_NOTHING, related_name='references')
+    type = models.CharField(max_length=255)
+    link = models.CharField(max_length=255)
+    icon = models.CharField(max_length=255, blank=True, null=True)
+    name = models.CharField(max_length=255)
+    description = models.CharField(max_length=255)
+    views = models.CharField(max_length=255, blank=True, null=True)
+    likes = models.CharField(max_length=255, blank=True, null=True)
+    meta = models.JSONField(blank=True, null=True)
+    topics = models.JSONField(blank=True, null=True)
+    topic_names = models.JSONField(blank=True, null=True)
+    created_at = models.DateTimeField(blank=True, null=True)
+    updated_at = models.DateTimeField(blank=True, null=True)
+    deleted_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = 'project_references'
+
+
+class ProjectHistories(models.Model):
+    id = models.BigAutoField(primary_key=True)
+    uuid = models.CharField(max_length=36)
+    project = models.ForeignKey('Projects', models.DO_NOTHING, related_name='history')
+    user = models.ForeignKey('Users', models.DO_NOTHING)
+    description = models.TextField()
+    status = models.CharField(max_length=255)
+    created_at = models.DateTimeField(blank=True, null=True)
+    updated_at = models.DateTimeField(blank=True, null=True)
+    deleted_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = 'project_histories'
+
+class ProjectFeedbackUsers(models.Model):
+    id = models.BigAutoField(primary_key=True)
+    uuid = models.CharField(max_length=36)
+    project = models.ForeignKey('Projects', models.DO_NOTHING)
+    user = models.ForeignKey('Users', models.DO_NOTHING)
+    responsiveness_communication = models.IntegerField()
+    creative_direction = models.IntegerField()
+    quality_of_work = models.IntegerField()
+    attention_to_detail = models.IntegerField()
+    turnaround_time = models.IntegerField()
+    service_value = models.CharField(max_length=255)
+    work_again = models.CharField(max_length=255)
+    review = models.TextField()
+    created_at = models.DateTimeField(blank=True, null=True)
+    updated_at = models.DateTimeField(blank=True, null=True)
+    deleted_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = 'project_feedback_users'
+
+class ProjectFeedbackEditors(models.Model):
+    id = models.BigAutoField(primary_key=True)
+    uuid = models.CharField(max_length=36)
+    project = models.ForeignKey('Projects', models.DO_NOTHING)
+    user = models.ForeignKey('Users', models.DO_NOTHING)
+    worked_with = models.CharField(max_length=255)
+    responsiveness_communication = models.IntegerField()
+    creative_direction = models.IntegerField()
+    working_together = models.IntegerField()
+    turnaround_time = models.IntegerField()
+    work_again = models.CharField(max_length=255)
+    review = models.TextField()
+    created_at = models.DateTimeField(blank=True, null=True)
+    updated_at = models.DateTimeField(blank=True, null=True)
+    deleted_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = 'project_feedback_editors'

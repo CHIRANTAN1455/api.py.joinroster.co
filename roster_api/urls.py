@@ -12,12 +12,16 @@ from .views import (
     user_project_index, user_project_public_index, user_project_add,
     user_project_update, user_project_delete, user_project_info,
     project_index, project_public_index, project_get, project_store,
-    project_update, project_status_update,
+    project_update, project_status, project_cancel, project_response, project_milestone,
+    project_review, project_feedback, project_match_score,
     matching_index, matching_get, matching_store, matching_update, matching_editor_update,
     editor_index, editor_get, editor_projects, editor_creators, editor_reviews,
+    editor_metadata, editor_jobtypes,
     project_application_index, project_application_get, project_application_store,
     project_application_update, project_application_create_note,
     project_application_delete_note, project_application_send_rejection_email,
+    project_deposit, project_purchase, send_project_alert, send_project_alert_2_days,
+    project_conversation,
     project_screening_question_index, project_screening_question_store,
     project_screening_question_show, project_screening_question_update,
     project_screening_question_destroy,
@@ -29,7 +33,9 @@ from .views import (
     matching_get_by_project_id, matching_public_create, matching_get_by_token,
     matching_create_from_favorite_creators, matching_admin_update,
     content_forms_index, project_types_index, project_types_user_index, reasons_index, referrals_index,
-    settings_index, settings_store, settings_update, settings_destroy
+    settings_index, settings_store, settings_update, settings_destroy,
+    user_todo_get_first, user_todo_get_last, user_todo_create, user_todo_update, user_todo_delete,
+    referral_records_index, referral_paid_records
 )
 
 from .views import (
@@ -68,7 +74,7 @@ from .views import (
     editor_delete_project, editor_creator, editor_delete_creator, editor_send_verification_email,
     editor_update_verification_note, editor_approve_verification, editor_delete_verification_note,
     editor_get_verification_issues,
-    project_create_view, project_history, project_review, project_feedback, project_destroy, project_edit,
+    project_create_view, project_history, project_review_legacy, project_feedback_legacy, project_destroy, project_edit,
     project_application_show_view,
     questionnaire_response_index, questionnaire_response_show, questionnaire_response_approve, questionnaire_response_reject,
     matching_setting_index, matching_setting_store, matching_setting_update, matching_setting_destroy,
@@ -161,6 +167,13 @@ urlpatterns = [
     path('user/<uuid>/unsubscribe', views.user_unsubscribe, name='user_unsubscribe'),
     path('user/<id>/revert-time', views.user_revert_update_time, name='user_revert_update_time'),
     path('user/<uuid>/post-slack', views.user_post_to_slack, name='user_post_to_slack'),
+    path('user-to-do', user_todo_get_first, name='user_todo_get_first'),
+    path('user-to-do/last', user_todo_get_last, name='user_todo_get_last'),
+    path('user-to-do/add', user_todo_create, name='user_todo_create'),
+    path('user-to-do/<id>/update', user_todo_update, name='user_todo_update'),
+    path('user-to-do/<id>/delete', user_todo_delete, name='user_todo_delete'),
+    path('referral-records', referral_records_index, name='referral_records_index'),
+    path('referral-paid-records', referral_paid_records, name='referral_paid_records'),
     
     # User Social Accounts Endpoints
     path('user/social', views.user_social_index, name='user_social_index'),
@@ -210,7 +223,19 @@ urlpatterns = [
     path('project/store', project_store, name='project_store'),
     path('project/<uuid>', project_get, name='project_get'),
     path('project/<uuid>/update', project_update, name='project_update'),
-    path('project/<uuid>/status', project_status_update, name='project_status_update'),
+    path('project/<uuid>/status', project_status, name='project_status'),
+    path('project/<uuid>/cancel', project_cancel, name='project_cancel'),
+    path('project/<uuid>/response', project_response, name='project_response'),
+    path('project/<uuid>/milestone', project_milestone, name='project_milestone'),
+    path('project/<uuid>/review', project_review, name='project_review'),
+    path('project/<uuid>/feedback', project_feedback, name='project_feedback'),
+    path('project/<uuid>/match-score', project_match_score, name='project_match_score'),
+    path('project/<uuid>/history', project_history, name='project_history'),
+    path('project/<uuid>/deposit', project_deposit, name='project_deposit'),
+    path('project/<uuid>/purchase', project_purchase, name='project_purchase'),
+    path('project/alert', send_project_alert, name='send_project_alert'),
+    path('project/alerts/2-days', send_project_alert_2_days, name='send_project_alert_2_days'),
+    path('project/<uuid>/conversation', project_conversation, name='project_conversation'),
 
     # Matching Endpoints
     path('matching', matching_index, name='matching_index'),
@@ -225,6 +250,8 @@ urlpatterns = [
     path('editor/<username>/projects', editor_projects, name='editor_projects'),
     path('editor/<username>/creators', editor_creators, name='editor_creators'),
     path('editor/<username>/reviews', editor_reviews, name='editor_reviews'),
+    path('editor/metadata/<username>', editor_metadata, name='editor_metadata'),
+    path('editor/<username>/jobtypes', editor_jobtypes, name='editor_jobtypes'),
 
     # Project Application Endpoints
     path('project/application', project_application_index, name='project_application_index'),
@@ -414,8 +441,8 @@ urlpatterns = [
     # Project Extensions
     path('project/add', project_create_view, name='project_add_form'),
     path('project/history/<int:id>', project_history, name='project_history_id'),
-    path('project/review/<int:id>', project_review, name='project_review_id'),
-    path('project/feedback/<int:id>', project_feedback, name='project_feedback_id'),
+    path('project/review/<int:id>', project_review_legacy, name='project_review_id'),
+    path('project/feedback/<int:id>', project_feedback_legacy, name='project_feedback_id'),
     path('project/delete/<int:id>', project_destroy, name='project_destroy_id'),
     path('project/<int:id>/edit', project_edit, name='project_edit_id'),
 
