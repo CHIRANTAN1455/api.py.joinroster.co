@@ -6,7 +6,15 @@ from googleapiclient.discovery import build
 from rest_framework.response import Response
 
 def ApiResponse(data=None, message="Success", status="success", status_code=200, **kwargs):
-    # ... (existing code)
+    # Handle common mistake where status is used instead of status_code
+    if isinstance(status, int):
+        status_code = status
+        status = 'error'
+    
+    # Automatically set status to 'error' for failure codes if still at default
+    if status_code >= 400 and status == 'success':
+        status = 'error'
+
     response_data = {
         "status": status,
         "message": message,
