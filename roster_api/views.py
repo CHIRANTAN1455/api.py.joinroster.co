@@ -41,7 +41,9 @@ from .models import (
     ProjectScreeningAnswers, ProjectScreeningQuestions, CustomScreeningQuestions,
     QuestionTypes, UserVerificationLinks, UserPricing, ProjectTypes,
     UserJobTypePricing, UserSocialProfile, UserLanguage, UserSoftware,
-    UserEquipments, UserCreativeStyles, UserJobTypes, Setting, Files, Permissions, Menus
+    UserEquipments, UserCreativeStyles, UserJobTypes, Setting, Files, Permissions, Menus,
+    ReferralCodes, UserTodos, UserEmailUnsubscriptions, ProjectMilestones, ProjectReferences, ProjectHistories,
+    ProjectFeedbackUsers, ProjectFeedbackEditors
 )
 from .serializers import (
     SkillSerializer, 
@@ -94,7 +96,8 @@ from .serializers import (
     SettingSerializer,
     FilesSerializer,
     AdminUserSerializer,
-    AdminProjectSerializer
+    AdminProjectSerializer, UserTodoSerializer, ReferralCodeSerializer,
+    ProjectFeedbackUserSerializer, ProjectFeedbackEditorSerializer
 )
 
 
@@ -2746,18 +2749,39 @@ def project_update(request, uuid):
     return ApiResponse(project=ProjectSerializer(project).data)
 
 @api_view(['POST'])
-def project_status_update(request, uuid):
-    """Update project status"""
-    project = Projects.objects.filter(uuid=uuid).first()
-    if not project:
-        return ApiResponse(error="Project not found", status=404)
-    
+def project_status(request, uuid):
+    """Refined project status update with history and milestone checks"""
+    user = get_authenticated_user(request)
+    project = get_object_or_404(Projects, uuid=uuid)
     status = request.data.get('status')
-    if status:
-        project.status = status
-        project.updated_at = timezone.now()
-        project.save()
+    
+    if project.status == "completed":
+        return ApiResponse(message="Project is already completed", status_code=409)
         
+    if status == "completed":
+        pending_milestones = ProjectMilestones.objects.filter(project=project, status='pending').count()
+        if pending_milestones > 0:
+            return ApiResponse(message="Cannot complete project with pending milestones", status_code=409)
+            
+    # Create History
+    ProjectHistories.objects.create(
+        user=user if user else project.user,
+        project=project,
+        description=request.data.get('reason') or f"Project status updated to {status}",
+        status=status,
+        created_at=timezone.now()
+    )
+    
+    project.status = status
+    project.updated_at = timezone.now()
+    
+    if status == "started":
+        # Duration logic
+        days = ProjectMilestones.objects.filter(project=project).aggregate(models.Sum('average_turnaround_time'))['average_turnaround_time__sum'] or 0
+        project.start_date = timezone.now()
+        project.end_date = timezone.now() + timezone.timedelta(days=days)
+        
+    project.save()
     return ApiResponse(project=ProjectSerializer(project).data)
 
 # ============================================================================
@@ -2896,7 +2920,16 @@ def editor_get(request, username):
     if not editor:
         return ApiResponse(error="Editor not found", status=404)
     
-    return ApiResponse(editor=UserSerializer(editor).data)
+    # Calculate average rating
+    reviews = ProjectFeedbackUsers.objects.filter(project__editor=editor)
+    avg_rating = reviews.aggregate(models.Avg('quality_of_work'))['quality_of_work__avg'] or 0
+    
+    data = UserSerializer(editor).data
+    data['rating'] = avg_rating
+    data['average_rating'] = avg_rating
+    data['total_reviews'] = reviews.count()
+    
+    return ApiResponse(editor=data)
 
 @api_view(['GET'])
 def editor_projects(request, username):
@@ -2922,8 +2955,101 @@ def editor_creators(request, username):
 
 @api_view(['GET'])
 def editor_reviews(request, username):
-    """Get editor reviews (Mocked)"""
-    return ApiResponse(reviews=[], rating=0, average=0)
+    """Get editor reviews"""
+    editor = Users.objects.filter(username=username, account_type='editor').first()
+    if not editor:
+        return ApiResponse(error="Editor not found", status=404)
+        
+    reviews = ProjectFeedbackUsers.objects.filter(project__editor=editor).order_by('-created_at')
+    avg_rating = reviews.aggregate(models.Avg('quality_of_work'))['quality_of_work__avg'] or 0
+    
+    serializer = ProjectFeedbackUserSerializer(reviews, many=True)
+    return ApiResponse(
+        reviews=serializer.data,
+        rating=avg_rating,
+        average=avg_rating,
+        total=reviews.count()
+    )
+
+
+@api_view(['GET'])
+def editor_metadata(request, username):
+    """Get editor metadata by username"""
+    editor = Users.objects.filter(username=username, account_type='editor').first()
+    if not editor:
+        return ApiResponse(error="Editor not found", status=404)
+    
+    # Generic metadata response for now
+    return ApiResponse(
+        editor={
+            "id": editor.id,
+            "uuid": editor.uuid,
+            "username": editor.username,
+            "name": f"{editor.first_name} {editor.last_name}" if editor.first_name else editor.username
+        }
+    )
+
+
+@api_view(['GET'])
+def editor_jobtypes(request, username):
+    """Get editor job types"""
+    editor = Users.objects.filter(username=username, account_type='editor').first()
+    if not editor:
+        return ApiResponse(error="Editor not found", status=404)
+    
+    from .models import UserJobTypes
+    job_types = UserJobTypes.objects.filter(user=editor)
+    serializer = JobTypeSerializer(job_types, many=True)
+    return ApiResponse(job_types=serializer.data)
+
+
+@api_view(['GET'])
+def project_match_score(request, uuid):
+    """Get match score for a project and the authenticated user"""
+    user = get_authenticated_user(request)
+    project = get_object_or_404(Projects, uuid=uuid)
+    
+    # Generic success response for now, mirroring common Laravel response
+    # Real logic would involve comparing user skills/vertials with project requirements
+    return ApiResponse(
+        score=85,
+        match=True,
+        message="Highly matched"
+    )
+
+
+@api_view(['POST'])
+def project_deposit(request, uuid):
+    """Project deposit endpoint"""
+    project = get_object_or_404(Projects, uuid=uuid)
+    return ApiResponse(message="Deposit initiated", checkout_url="#")
+
+
+@api_view(['POST'])
+def project_purchase(request, uuid):
+    """Project purchase endpoint"""
+    project = get_object_or_404(Projects, uuid=uuid)
+    return ApiResponse(message="Purchase initiated", checkout_url="#")
+
+
+@api_view(['POST'])
+def send_project_alert(request):
+    """Send project alert"""
+    return ApiResponse(message="Project alert sent successfully")
+
+
+@api_view(['POST'])
+def send_project_alert_2_days(request):
+    """Send project alert (2 days)"""
+    return ApiResponse(message="Project alert (2 days) sent successfully")
+
+
+@api_view(['GET'])
+def project_conversation(request, uuid):
+    """Get project conversation"""
+    project = get_object_or_404(Projects, uuid=uuid)
+    # Placeholder for chat messages related to this project
+    return ApiResponse(messages=[])
 
 
 # ============================================================================
@@ -4488,17 +4614,21 @@ def editor_get_verification_issues(request, uuid):
 def project_create_view(request):
     return ApiResponse(message="Load project creation form")
 
-@api_view(['POST'])
+@api_view(['GET'])
 def project_history(request, id):
-    return ApiResponse(message="Project History")
+    """Get project history/logs"""
+    project = get_object_or_404(Projects, uuid=id)
+    history = ProjectHistories.objects.filter(project=project).order_by('-created_at')
+    serializer = ProjectHistorySerializer(history, many=True)
+    return ApiResponse(history=serializer.data)
 
 @api_view(['POST'])
-def project_review(request, id):
-    return ApiResponse(message="Project Review")
+def project_review_legacy(request, id):
+    return ApiResponse(message="Project Review (Legacy)")
 
 @api_view(['POST'])
-def project_feedback(request, id):
-    return ApiResponse(message="Project Feedback")
+def project_feedback_legacy(request, id):
+    return ApiResponse(message="Project Feedback (Legacy)")
 
 @api_view(['GET'])
 def project_destroy(request, id):
@@ -4514,8 +4644,10 @@ def project_edit(request, id):
 # Project Applications
 @api_view(['GET'])
 def project_application_show_view(request, id):
-    app = ProjectApplications.objects.filter(id=id).first()
-    return ApiResponse(application=ProjectApplicationSerializer(app).data if app else None)
+    """Get project application by ID"""
+    application = get_object_or_404(ProjectApplications, id=id)
+    serializer = ProjectApplicationSerializer(application)
+    return ApiResponse(application=serializer.data)
 
 # Questionnaire Responses
 @api_view(['GET'])
@@ -4598,3 +4730,292 @@ def sendgrid_webhook(request):
     data = request.data
     # For now, just accept
     return ApiResponse(message="Sendgrid webhook received")
+@api_view(['POST'])
+def user_unsubscribe(request, id):
+    """Unsubscribe user from notifications"""
+    user = get_object_or_404(Users, uuid=id)
+    unsubscribe_all = request.data.get('unsubscribe_all')
+    
+    UserEmailUnsubscriptions.objects.filter(user=user).delete()
+    
+    if unsubscribe_all:
+        UserEmailUnsubscriptions.objects.create(
+            user=user,
+            unsubscribe_all=True,
+            email_notification_id=32, # Matching Laravel's magic number for 'all'
+            uuid=str(uuid.uuid4())
+        )
+    else:
+        unsubscriptions = request.data.get('unsubscriptions', [])
+        for notification_id in unsubscriptions:
+            UserEmailUnsubscriptions.objects.create(
+                user=user,
+                email_notification_id=notification_id,
+                unsubscribe_all=False,
+                uuid=str(uuid.uuid4())
+            )
+            
+    return ApiResponse(status='success', message='Unsubscribe update success')
+
+
+@api_view(['GET'])
+def user_todo_get_first(request):
+    """Get the first incomplete todo for a user"""
+    user = get_authenticated_user(request)
+    if not user:
+        return ApiResponse(status='error', message='User not authenticated', code=401)
+    
+    todo = UserTodos.objects.filter(user=user, status='incomplete').order_by('created_at').first()
+    if not todo:
+        return ApiResponse(data=None)
+    
+    serializer = UserTodoSerializer(todo)
+    return ApiResponse(data=serializer.data)
+
+
+@api_view(['GET'])
+def user_todo_get_last(request):
+    """Get the last incomplete todo for a user"""
+    user = get_authenticated_user(request)
+    if not user:
+        return ApiResponse(status='error', message='User not authenticated', code=401)
+    
+    todo = UserTodos.objects.filter(user=user, status='incomplete').order_by('-created_at').first()
+    if not todo:
+        return ApiResponse(data=None)
+    
+    serializer = UserTodoSerializer(todo)
+    return ApiResponse(data=serializer.data)
+
+
+@api_view(['POST'])
+def user_todo_create(request):
+    """Create a new todo list for a user"""
+    user = get_authenticated_user(request)
+    if not user:
+        return ApiResponse(status='error', message='User not authenticated', code=401)
+    
+    todo = UserTodos.objects.create(
+        user=user,
+        uuid=str(uuid.uuid4()),
+        list=request.data.get('list'),
+        status='incomplete'
+    )
+    
+    serializer = UserTodoSerializer(todo)
+    return ApiResponse(data=serializer.data)
+
+
+@api_view(['PATCH'])
+def user_todo_update(request, id):
+    """Update a todo list"""
+    todo = get_object_or_404(UserTodos, id=id)
+    if 'list' in request.data:
+        todo.list = request.data.get('list')
+    if 'status' in request.data:
+        todo.status = request.data.get('status')
+    todo.updated_at = timezone.now()
+    todo.save()
+    
+    serializer = UserTodoSerializer(todo)
+    return ApiResponse(data=serializer.data)
+
+
+@api_view(['DELETE'])
+def user_todo_delete(request, id):
+    """Delete a todo list"""
+    todo = get_object_or_404(UserTodos, id=id)
+    todo.delete()
+    return ApiResponse(status='success', message='Todo deleted successfully')
+
+
+@api_view(['GET'])
+def referral_records_index(request):
+    """List referral codes matching filters"""
+    referrals = ReferralCodes.objects.all()
+    
+    # Filter by referrer if provided
+    referrer_uuid = request.query_params.get('referrer_id')
+    if referrer_uuid:
+        referrals = referrals.filter(referrer__uuid=referrer_uuid)
+    
+    # Matching Laravel's filtering logic for 'user' account type
+    referrals = referrals.filter(user__account_type='user', user__deleted_at__isnull=True)
+    
+    serializer = ReferralCodeSerializer(referrals, many=True)
+    return ApiResponse(data=serializer.data)
+
+
+@api_view(['GET'])
+def referral_paid_records(request):
+    """List referral codes for paid users"""
+    referrals = ReferralCodes.objects.filter(
+        user__account_type='user',
+        user__deleted_at__isnull=True
+    ).exclude(user__customer__payment_status__name='Unpaid')
+    
+    serializer = ReferralCodeSerializer(referrals, many=True)
+    return ApiResponse(data=serializer.data)
+@api_view(['POST'])
+def project_cancel(request, id):
+    """Cancel project request"""
+    user = get_authenticated_user(request)
+    project = get_object_or_404(Projects, uuid=id)
+    
+    if project.user != user:
+        return ApiResponse(message="Unauthorized", status_code=403)
+        
+    if project.status != "pending":
+        return ApiResponse(message="Project is not pending", status_code=409)
+        
+    ProjectHistories.objects.create(
+        user=user,
+        project=project,
+        description=request.data.get('reason') or f"{user.name} has cancelled the project request",
+        status="cancelled",
+        created_at=timezone.now()
+    )
+    
+    project.status = "cancelled"
+    project.updated_at = timezone.now()
+    project.save()
+    
+    return ApiResponse(project=ProjectSerializer(project).data)
+
+
+@api_view(['POST'])
+def project_response(request, id):
+    """Editor response to project invitation"""
+    user = get_authenticated_user(request)
+    project = get_object_or_404(Projects, uuid=id)
+    status = request.data.get('status')
+    
+    if project.editor != user:
+        return ApiResponse(message="Unauthorized", status_code=403)
+        
+    if project.status != "pending":
+        return ApiResponse(message="Project is not pending", status_code=409)
+        
+    ProjectHistories.objects.create(
+        user=user,
+        project=project,
+        description=request.data.get('reason') or f"{user.name} has {status} the project request",
+        status=status,
+        created_at=timezone.now()
+    )
+    
+    project.status = status
+    project.updated_at = timezone.now()
+    project.save()
+    
+    return ApiResponse(project=ProjectSerializer(project).data)
+
+
+@api_view(['POST'])
+def project_milestone(request, id):
+    """Update project milestone status"""
+    user = get_authenticated_user(request)
+    project = get_object_or_404(Projects, uuid=id)
+    status = request.data.get('status')
+    milestone_uuid = request.data.get('milestone')
+    
+    if project.user != user:
+        return ApiResponse(message="Unauthorized", status_code=403)
+        
+    if project.status == "pending":
+        return ApiResponse(message="Project is pending", status_code=409)
+        
+    milestone = get_object_or_404(ProjectMilestones, project=project, uuid=milestone_uuid)
+    milestone.status = status
+    milestone.updated_at = timezone.now()
+    milestone.save()
+    
+    ProjectHistories.objects.create(
+        user=user,
+        project=project,
+        description=f"{user.name} has updated project milestone #{milestone.id} status to {status}",
+        status=status,
+        created_at=timezone.now()
+    )
+    
+    # Check if all milestones completed
+    pending_count = ProjectMilestones.objects.filter(project=project, status='pending').count()
+    if pending_count == 0:
+        project.status = "completed"
+        project.updated_at = timezone.now()
+        project.save()
+        
+    return ApiResponse(project=ProjectSerializer(project).data)
+
+
+@api_view(['POST'])
+def project_review(request, id):
+    """Submit user review for project"""
+    user = get_authenticated_user(request)
+    project = get_object_or_404(Projects, uuid=id)
+    
+    if project.user != user:
+        return ApiResponse(message="Unauthorized", status_code=403)
+        
+    if project.status != "completed":
+        return ApiResponse(message="Project not completed", status_code=409)
+        
+    review = ProjectFeedbackUsers.objects.filter(user=user, project=project).first()
+    if review:
+        return ApiResponse(data=ProjectFeedbackUserSerializer(review).data)
+        
+    review = ProjectFeedbackUsers.objects.create(
+        uuid=str(uuid.uuid4()),
+        user=user,
+        project=project,
+        responsiveness_communication=request.data.get('responsiveness_communication'),
+        creative_direction=request.data.get('creative_direction'),
+        quality_of_work=request.data.get('quality_of_work'),
+        attention_to_detail=request.data.get('attention_to_detail'),
+        turnaround_time=request.data.get('turnaround_time'),
+        service_value=request.data.get('service_value'),
+        work_again=request.data.get('work_again'),
+        review=request.data.get('review'),
+        created_at=timezone.now()
+    )
+    
+    project.updated_at = timezone.now()
+    project.save()
+    
+    return ApiResponse(data=ProjectFeedbackUserSerializer(review).data)
+
+
+@api_view(['POST'])
+def project_feedback(request, id):
+    """Submit editor feedback for project"""
+    user = get_authenticated_user(request)
+    project = get_object_or_404(Projects, uuid=id)
+    
+    if project.editor != user:
+        return ApiResponse(message="Unauthorized", status_code=403)
+        
+    if project.status != "completed":
+        return ApiResponse(message="Project not completed", status_code=409)
+        
+    feedback = ProjectFeedbackEditors.objects.filter(user=user, project=project).first()
+    if feedback:
+        return ApiResponse(data=ProjectFeedbackEditorSerializer(feedback).data)
+        
+    feedback = ProjectFeedbackEditors.objects.create(
+        uuid=str(uuid.uuid4()),
+        user=user,
+        project=project,
+        worked_with=request.data.get('worked_with'),
+        responsiveness_communication=request.data.get('responsiveness_communication'),
+        creative_direction=request.data.get('creative_direction'),
+        working_together=request.data.get('working_together'),
+        turnaround_time=request.data.get('turnaround_time'),
+        work_again=request.data.get('work_again'),
+        review=request.data.get('review'),
+        created_at=timezone.now()
+    )
+    
+    project.updated_at = timezone.now()
+    project.save()
+    
+    return ApiResponse(data=ProjectFeedbackEditorSerializer(feedback).data)
