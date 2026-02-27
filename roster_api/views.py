@@ -2,10 +2,44 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiExample
 from django.contrib.auth.hashers import make_password, check_password
+from django.db import models
+from django.db.utils import ProgrammingError
+from django.db import connection, transaction
+from django.db.utils import OperationalError
 from django.utils import timezone
 from django.shortcuts import get_object_or_404
 from .auth_helpers import verify_access_token, check_laravel_password
 from .user_resource import get_user_resource_dict
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+def _is_mysql_missing_table_or_column(exc: Exception) -> bool:
+    args = getattr(exc, "args", None)
+    if not args or not isinstance(args, (list, tuple)) or len(args) < 1:
+        return False
+    return args[0] in (1146, 1054)
+
+
+def _replace_pivot_by_uuids(*, table: str, user_id: int, fk_column: str, model_cls, uuids: list[str]):
+    """
+    Replace a user's pivot rows (hard delete + insert) for Laravel-style pivot tables
+    that do NOT have an `id` column.
+    """
+    uuids = [u for u in (uuids or []) if u]
+    id_map = dict(model_cls.objects.filter(uuid__in=uuids).values_list("uuid", "id"))
+    target_ids = [id_map[u] for u in uuids if u in id_map]
+    now = timezone.now()
+
+    with transaction.atomic():
+        with connection.cursor() as cursor:
+            cursor.execute(f"DELETE FROM `{table}` WHERE user_id = %s", [user_id])
+            if target_ids:
+                cursor.executemany(
+                    f"INSERT INTO `{table}` (user_id, `{fk_column}`, created_at, updated_at) VALUES (%s, %s, %s, %s)",
+                    [(user_id, tid, now, now) for tid in target_ids],
+                )
 
 def get_authenticated_user(request):
     """
@@ -43,7 +77,8 @@ from .models import (
     UserJobTypePricing, UserSocialProfile, UserLanguage, UserSoftware,
     UserEquipments, UserCreativeStyles, UserJobTypes, Setting, Files, Permissions, Menus,
     ReferralCodes, UserTodos, UserEmailUnsubscriptions, ProjectMilestones, ProjectReferences, ProjectHistories,
-    ProjectFeedbackUsers, ProjectFeedbackEditors
+    ProjectFeedbackUsers, ProjectFeedbackEditors, Chats, ChatMessages,
+    UserVerifications
 )
 from .serializers import (
     SkillSerializer, 
@@ -97,7 +132,8 @@ from .serializers import (
     FilesSerializer,
     AdminUserSerializer,
     AdminProjectSerializer, UserTodoSerializer, ReferralCodeSerializer,
-    ProjectFeedbackUserSerializer, ProjectFeedbackEditorSerializer
+    ProjectFeedbackUserSerializer, ProjectFeedbackEditorSerializer,
+    UserPlatformSerializer, UserContentVerticalSerializer
 )
 
 
@@ -407,30 +443,29 @@ def invite(request):
 
 @api_view(['GET'])
 def profile_get(request):
-    # Mocking auth for now
-    user_id = request.headers.get('X-User-ID') or request.query_params.get('user_id')
-    if not user_id:
+    # Try Bearer token auth first
+    user = get_authenticated_user(request)
+    
+    if not user:
+        # Fallback: check 'user' or 'user_id' query param (can be UUID or numeric ID)
+        user_param = request.query_params.get('user') or request.query_params.get('user_id')
+        if user_param:
+            if len(str(user_param)) > 10:
+                user = Users.objects.filter(uuid=user_param).first()
+            else:
+                user = Users.objects.filter(id=user_param).first()
+    
+    if not user:
         return ApiResponse(error="Unauthorized", status=401)
     
-    user = Users.objects.filter(id=user_id).first()
-    if not user:
-        return ApiResponse(error="User not found", status=404)
-        
-    serializer = UserSerializer(user)
-    data = serializer.data
-    
-    # Eager loading equivalent
-    data['pricing'] = UserPricingSerializer(UserPricing.objects.filter(user=user).first()).data
-    data['social_profiles'] = UserSocialProfileSerializer(UserSocialProfile.objects.filter(user=user).first()).data
-    data['skills'] = UserSkillSerializer(UserSkills.objects.filter(user=user), many=True).data
-    data['platforms'] = UserPlatformSerializer(UserPlatforms.objects.filter(user=user), many=True).data
-    data['softwares'] = UserSoftwareSerializer(UserSoftware.objects.filter(user=user), many=True).data
-    data['equipments'] = UserEquipmentSerializer(UserEquipments.objects.filter(user=user), many=True).data
-    data['creative_styles'] = UserCreativeStyleSerializer(UserCreativeStyles.objects.filter(user=user), many=True).data
-    data['job_types'] = UserJobTypeSerializer(UserJobTypes.objects.filter(user=user), many=True).data
-    data['languages'] = UserLanguageSerializer(UserLanguage.objects.filter(user=user), many=True).data
-    
-    return ApiResponse(user=data)
+    # Return Laravel-shaped UserResource (best-effort, never 500 due to missing pivots)
+    try:
+        return ApiResponse(user=get_user_resource_dict(user))
+    except (OperationalError, ProgrammingError) as e:
+        if _is_mysql_missing_table_or_column(e):
+            logger.warning("Profile schema mismatch; returning minimal user", exc_info=True)
+            return ApiResponse(user=UserSerializer(user).data)
+        raise
 
 @api_view(['POST'])
 def profile_update(request):
@@ -505,7 +540,10 @@ def profile_update(request):
     user.updated_at = datetime.datetime.now()
     user.save()
     
-    return ApiResponse(message="Profile updated successfully", user=UserSerializer(user).data)
+    try:
+        return ApiResponse(message="Profile updated successfully", user=get_user_resource_dict(user))
+    except Exception:
+        return ApiResponse(message="Profile updated successfully", user=UserSerializer(user).data)
 
 @api_view(['POST'])
 def profile_pricing(request):
@@ -559,14 +597,23 @@ def profile_skills(request):
         return ApiResponse(error="User not found", status=404)
 
     skill_uuids = request.data.get('skills', [])
-    # Sync logic
-    UserSkills.objects.filter(user=user).delete()
-    for uuid in skill_uuids:
-        skill = Skills.objects.filter(uuid=uuid).first()
-        if skill:
-            UserSkills.objects.create(user=user, skill=skill)
+    try:
+        _replace_pivot_by_uuids(
+            table="user_skills",
+            user_id=user.id,
+            fk_column="skill_id",
+            model_cls=Skills,
+            uuids=skill_uuids,
+        )
+    except (OperationalError, ProgrammingError) as e:
+        if _is_mysql_missing_table_or_column(e):
+            return ApiResponse(error="Skills not available (database schema mismatch)", status=503)
+        raise
 
-    return ApiResponse(skills=UserSkillSerializer(UserSkills.objects.filter(user=user), many=True).data)
+    # Return Laravel-shaped resources (skills themselves)
+    skills = Skills.objects.filter(userskills__user=user).distinct()
+    skills_data = [{"id": s.uuid, "icon": s.icon, "name": s.name, "description": s.description} for s in skills]
+    return ApiResponse(skills=skills_data)
 
 @api_view(['POST'])
 def profile_jobtypes(request):
@@ -580,15 +627,41 @@ def profile_jobtypes(request):
 
     job_type_uuids = request.data.get('job_types', [])
     primary_job_uuid = request.data.get('primary_job')
-    
-    UserJobTypes.objects.filter(user=user).delete()
-    for uuid in job_type_uuids:
-        job_type = JobTypes.objects.filter(uuid=uuid).first()
-        if job_type:
-            is_primary = 1 if uuid == primary_job_uuid else 0
-            UserJobTypes.objects.create(user=user, job_type=job_type, primary_job=is_primary)
+    job_type_uuids = [u for u in (job_type_uuids or []) if u]
 
-    return ApiResponse(job_types=UserJobTypeSerializer(UserJobTypes.objects.filter(user=user), many=True).data)
+    try:
+        id_map = dict(JobTypes.objects.filter(uuid__in=job_type_uuids).values_list("uuid", "id"))
+        now = timezone.now()
+        rows = []
+        for u in job_type_uuids:
+            jt_id = id_map.get(u)
+            if not jt_id:
+                continue
+            rows.append((user.id, jt_id, 1 if u == primary_job_uuid else 0, now, now))
+
+        with transaction.atomic():
+            with connection.cursor() as cursor:
+                cursor.execute("DELETE FROM `user_job_types` WHERE user_id = %s", [user.id])
+                if rows:
+                    cursor.executemany(
+                        "INSERT INTO `user_job_types` (user_id, job_type_id, primary_job, created_at, updated_at) VALUES (%s, %s, %s, %s, %s)",
+                        rows,
+                    )
+    except (OperationalError, ProgrammingError) as e:
+        if _is_mysql_missing_table_or_column(e):
+            return ApiResponse(error="Job types not available (database schema mismatch)", status=503)
+        raise
+
+    job_types = (
+        JobTypes.objects.filter(userjobtypes__user=user)
+        .annotate(primary_job=models.F("userjobtypes__primary_job"))
+        .distinct()
+    )
+    job_types_data = [
+        {"id": jt.uuid, "icon": jt.icon, "name": jt.name, "description": jt.description, "primary_job": jt.primary_job}
+        for jt in job_types
+    ]
+    return ApiResponse(job_types=job_types_data)
 
 @api_view(['POST'])
 def profile_contentverticals(request):
@@ -601,13 +674,22 @@ def profile_contentverticals(request):
         return ApiResponse(error="User not found", status=404)
 
     uuids = request.data.get('content_verticals', [])
-    UserContentVerticals.objects.filter(user=user).delete()
-    for uuid in uuids:
-        item = ContentVerticals.objects.filter(uuid=uuid).first()
-        if item:
-            UserContentVerticals.objects.create(user=user, content_vertical=item)
+    try:
+        _replace_pivot_by_uuids(
+            table="user_content_verticals",
+            user_id=user.id,
+            fk_column="content_vertical_id",
+            model_cls=ContentVerticals,
+            uuids=uuids,
+        )
+    except (OperationalError, ProgrammingError) as e:
+        if _is_mysql_missing_table_or_column(e):
+            return ApiResponse(error="Content verticals not available (database schema mismatch)", status=503)
+        raise
 
-    return ApiResponse(content_verticals=UserContentVerticalSerializer(UserContentVerticals.objects.filter(user=user), many=True).data)
+    verticals = ContentVerticals.objects.filter(usercontentverticals__user=user).distinct()
+    verticals_data = [{"id": v.uuid, "icon": v.icon, "name": v.name, "description": v.description} for v in verticals]
+    return ApiResponse(content_verticals=verticals_data)
 
 @api_view(['POST'])
 def profile_contentverticals_new(request):
@@ -619,13 +701,26 @@ def profile_contentverticals_new(request):
     if not user:
         return ApiResponse(error="User not found", status=404)
 
-    uuids = request.data.get('content_verticals', [])
-    for uuid in uuids:
-        item = ContentVerticals.objects.filter(uuid=uuid).first()
-        if item:
-            UserContentVerticals.objects.get_or_create(user=user, content_vertical=item)
+    uuids = [u for u in (request.data.get('content_verticals', []) or []) if u]
+    id_map = dict(ContentVerticals.objects.filter(uuid__in=uuids).values_list("uuid", "id"))
+    now = timezone.now()
+    rows = [(user.id, id_map[u], now, now) for u in uuids if u in id_map]
+    try:
+        with transaction.atomic():
+            with connection.cursor() as cursor:
+                if rows:
+                    cursor.executemany(
+                        "INSERT IGNORE INTO `user_content_verticals` (user_id, content_vertical_id, created_at, updated_at) VALUES (%s, %s, %s, %s)",
+                        rows,
+                    )
+    except (OperationalError, ProgrammingError) as e:
+        if _is_mysql_missing_table_or_column(e):
+            return ApiResponse(error="Content verticals not available (database schema mismatch)", status=503)
+        raise
 
-    return ApiResponse(content_verticals=UserContentVerticalSerializer(UserContentVerticals.objects.filter(user=user), many=True).data)
+    verticals = ContentVerticals.objects.filter(usercontentverticals__user=user).distinct()
+    verticals_data = [{"id": v.uuid, "icon": v.icon, "name": v.name, "description": v.description} for v in verticals]
+    return ApiResponse(content_verticals=verticals_data)
 
 @api_view(['POST'])
 def profile_platforms(request):
@@ -638,13 +733,22 @@ def profile_platforms(request):
         return ApiResponse(error="User not found", status=404)
 
     uuids = request.data.get('platforms', [])
-    UserPlatforms.objects.filter(user=user).delete()
-    for uuid in uuids:
-        item = Platforms.objects.filter(uuid=uuid).first()
-        if item:
-            UserPlatforms.objects.create(user=user, platform=item)
+    try:
+        _replace_pivot_by_uuids(
+            table="user_platforms",
+            user_id=user.id,
+            fk_column="platform_id",
+            model_cls=Platforms,
+            uuids=uuids,
+        )
+    except (OperationalError, ProgrammingError) as e:
+        if _is_mysql_missing_table_or_column(e):
+            return ApiResponse(error="Platforms not available (database schema mismatch)", status=503)
+        raise
 
-    return ApiResponse(platforms=UserPlatformSerializer(UserPlatforms.objects.filter(user=user), many=True).data)
+    platforms = Platforms.objects.filter(userplatforms__user=user).distinct()
+    platforms_data = [{"id": p.uuid, "icon": p.icon, "name": p.name, "description": p.description} for p in platforms]
+    return ApiResponse(platforms=platforms_data)
 
 @api_view(['POST'])
 def profile_softwares(request):
@@ -657,13 +761,22 @@ def profile_softwares(request):
         return ApiResponse(error="User not found", status=404)
 
     uuids = request.data.get('softwares', [])
-    UserSoftware.objects.filter(user=user).delete()
-    for uuid in uuids:
-        item = Software.objects.filter(uuid=uuid).first()
-        if item:
-            UserSoftware.objects.create(user=user, software=item)
+    try:
+        _replace_pivot_by_uuids(
+            table="user_software",
+            user_id=user.id,
+            fk_column="software_id",
+            model_cls=Software,
+            uuids=uuids,
+        )
+    except (OperationalError, ProgrammingError) as e:
+        if _is_mysql_missing_table_or_column(e):
+            return ApiResponse(error="Softwares not available (database schema mismatch)", status=503)
+        raise
 
-    return ApiResponse(softwares=UserSoftwareSerializer(UserSoftware.objects.filter(user=user), many=True).data)
+    softwares = Software.objects.filter(usersoftware__user=user).distinct()
+    softwares_data = [{"id": s.uuid, "icon": s.icon, "name": s.name, "description": s.description} for s in softwares]
+    return ApiResponse(softwares=softwares_data)
 
 @api_view(['POST'])
 def profile_equipments(request):
@@ -676,13 +789,22 @@ def profile_equipments(request):
         return ApiResponse(error="User not found", status=404)
 
     uuids = request.data.get('equipments', [])
-    UserEquipments.objects.filter(user=user).delete()
-    for uuid in uuids:
-        item = Equipment.objects.filter(uuid=uuid).first()
-        if item:
-            UserEquipments.objects.create(user=user, equipment=item)
+    try:
+        _replace_pivot_by_uuids(
+            table="user_equipment",
+            user_id=user.id,
+            fk_column="equipment_id",
+            model_cls=Equipment,
+            uuids=uuids,
+        )
+    except (OperationalError, ProgrammingError) as e:
+        if _is_mysql_missing_table_or_column(e):
+            return ApiResponse(error="Equipments not available (database schema mismatch)", status=503)
+        raise
 
-    return ApiResponse(equipments=UserEquipmentSerializer(UserEquipments.objects.filter(user=user), many=True).data)
+    equipments = Equipment.objects.filter(userequipments__user=user).distinct()
+    equipments_data = [{"id": e.uuid, "icon": e.icon, "name": e.name, "description": e.description} for e in equipments]
+    return ApiResponse(equipments=equipments_data)
 
 @api_view(['POST'])
 def profile_creativestyles(request):
@@ -695,13 +817,22 @@ def profile_creativestyles(request):
         return ApiResponse(error="User not found", status=404)
 
     uuids = request.data.get('creative_styles', [])
-    UserCreativeStyles.objects.filter(user=user).delete()
-    for uuid in uuids:
-        item = CreativeStyles.objects.filter(uuid=uuid).first()
-        if item:
-            UserCreativeStyles.objects.create(user=user, creative_style=item)
+    try:
+        _replace_pivot_by_uuids(
+            table="user_creative_styles",
+            user_id=user.id,
+            fk_column="creative_style_id",
+            model_cls=CreativeStyles,
+            uuids=uuids,
+        )
+    except (OperationalError, ProgrammingError) as e:
+        if _is_mysql_missing_table_or_column(e):
+            return ApiResponse(error="Creative styles not available (database schema mismatch)", status=503)
+        raise
 
-    return ApiResponse(creative_styles=UserCreativeStyleSerializer(UserCreativeStyles.objects.filter(user=user), many=True).data)
+    creative_styles = CreativeStyles.objects.filter(usercreativestyles__user=user).distinct()
+    creative_styles_data = [{"id": cs.uuid, "icon": cs.icon, "name": cs.name, "description": cs.description} for cs in creative_styles]
+    return ApiResponse(creative_styles=creative_styles_data)
 
 @api_view(['GET'])
 def profile_social(request):
@@ -1391,7 +1522,7 @@ def user_by_referral_code(request, code):
         user=UserSerializer(user).data
     )
 
-@api_view(['PUT'])
+@api_view(['PUT', 'POST'])
 def user_update_policy(request, uuid):
     """Update user policy acceptance"""
     from .auth_helpers import verify_access_token
@@ -2230,6 +2361,54 @@ def user_verification_link_index(request):
         creators=UserVerificationLinkSerializer(links, many=True).data
     )
 
+
+@api_view(['GET', 'POST'])
+def user_notifications(request, uuid):
+    """Get or update user notification preferences (email unsubscriptions)"""
+    user = get_authenticated_user(request)
+    if not user:
+        return ApiResponse(status='error', message='User not authenticated', code=401)
+
+    target_user = Users.objects.filter(uuid=uuid).first()
+    if not target_user:
+        return ApiResponse(status='error', message='User not found', code=404)
+
+    if user.id != target_user.id:
+        return ApiResponse(status='error', message='Unauthorized', code=403)
+
+    if request.method == 'GET':
+        unsubscriptions = UserEmailUnsubscriptions.objects.filter(user=target_user)
+        data = list(unsubscriptions.values(
+            'id', 'uuid', 'email_notification_id', 'notification_type', 'created_at'
+        ))
+        return ApiResponse(status='success', data=data)
+
+    # POST: toggle notification preference
+    notification_type = request.data.get('notification_type')
+    email_notification_id = request.data.get('email_notification_id')
+
+    existing = UserEmailUnsubscriptions.objects.filter(
+        user=target_user,
+        notification_type=notification_type
+    )
+    if email_notification_id:
+        existing = existing.filter(email_notification_id=email_notification_id)
+
+    if existing.exists():
+        existing.delete()
+        return ApiResponse(status='success', message='Notification re-enabled')
+    else:
+        import uuid as uuid_lib
+        UserEmailUnsubscriptions.objects.create(
+            uuid=str(uuid_lib.uuid4()),
+            user=target_user,
+            email_notification_id=email_notification_id,
+            notification_type=notification_type,
+            created_at=timezone.now(),
+            updated_at=timezone.now()
+        )
+        return ApiResponse(status='success', message='Notification unsubscribed')
+
 @api_view(['POST'])
 def user_verification_link_add(request):
     """Add a verification link"""
@@ -2430,10 +2609,9 @@ def profile_statistics(request):
         
     applications_this_week = ProjectApplications.objects.filter(
         project__user=user,
-        project__hackathon__ne=1,
         project__status='open',
         status='pending'
-    ).count()
+    ).exclude(project__hackathon=1).count()
     
     # profile_visits count (assuming a ProfileVisits model exists or is a count field)
     # For now, placeholder 0 as per Laravel's conditional
@@ -2682,18 +2860,51 @@ def user_project_info(request):
 @api_view(['GET'])
 def project_index(request):
     """List projects for a user"""
-    user_id = request.headers.get('X-User-ID') or request.query_params.get('user_id')
-    if not user_id:
+    user = get_authenticated_user(request)
+    if not user:
         return Response({'status': 'error', 'message': 'Unauthorized'}, status=401)
     
-    projects = Projects.objects.filter(user_id=user_id)
-    serializer = ProjectSerializer(projects, many=True)
-    return ApiResponse(projects=serializer.data)
+    projects = (
+        Projects.objects.filter(
+            models.Q(user=user) | models.Q(editor=user)
+        )
+        .select_related('user', 'editor')
+        .prefetch_related('milestones', 'references', 'history')
+    )
+    
+    # Filter by statuses if provided (comma or dot separated)
+    statuses = request.query_params.get('statuses')
+    if statuses:
+        status_list = statuses.replace('.', ',').split(',')
+        projects = projects.filter(status__in=status_list)
+    
+    # Filter by type
+    project_type = request.query_params.get('type')
+    if project_type == 'hackathon':
+        projects = projects.filter(hackathon=1)
+    elif project_type == 'normal':
+        projects = projects.filter(models.Q(hackathon=0) | models.Q(hackathon__isnull=True))
+    
+    # Pagination
+    page = int(request.query_params.get('page', 1))
+    per_page = int(request.query_params.get('per_page', 20))
+    total = projects.count()
+    start = (page - 1) * per_page
+    end = start + per_page
+    projects_page = projects.order_by('-updated_at')[start:end]
+    
+    serializer = ProjectSerializer(projects_page, many=True)
+    return ApiResponse(projects=serializer.data, total=total, page=page)
 
 @api_view(['GET'])
 def project_public_index(request):
     """List public projects (Jobs)"""
-    projects = Projects.objects.filter(published=1)
+    projects = (
+        Projects.objects.filter(published=1)
+        .select_related('user', 'editor')
+        .prefetch_related('milestones', 'references', 'history')
+        .order_by('-created_at')
+    )
     serializer = ProjectSerializer(projects, many=True)
     return ApiResponse(projects=serializer.data)
 
@@ -2752,9 +2963,26 @@ def project_update(request, uuid):
 def project_status(request, uuid):
     """Refined project status update with history and milestone checks"""
     user = get_authenticated_user(request)
+    if not user:
+        return ApiResponse(status='error', message='User not authenticated', code=401)
+        
     project = get_object_or_404(Projects, uuid=uuid)
+    
+    # Authz: Only owner or assigned editor can change status
+    if project.user != user and project.editor != user:
+        return ApiResponse(status='error', message='Unauthorized', code=403)
+        
     status = request.data.get('status')
     
+    # Validate status
+    allowed_statuses = ['open', 'pending', 'started', 'completed', 'cancelled']
+    if not status or status not in allowed_statuses:
+        return ApiResponse(
+            status='error', 
+            message=f"Invalid or missing status. Allowed values: {', '.join(allowed_statuses)}", 
+            code=400
+        )
+        
     if project.status == "completed":
         return ApiResponse(message="Project is already completed", status_code=409)
         
@@ -2765,7 +2993,7 @@ def project_status(request, uuid):
             
     # Create History
     ProjectHistories.objects.create(
-        user=user if user else project.user,
+        user=user,
         project=project,
         description=request.data.get('reason') or f"Project status updated to {status}",
         status=status,
@@ -4718,6 +4946,583 @@ def email_notification_destroy(request, id):
 def email_notification_show(request, id):
     return ApiResponse(notification={})
 
+
+# ============================================================================
+# Public Job Listing & Free Job Posting (Phase 8 lightweight ports)
+# ============================================================================
+
+@api_view(['GET'])
+def public_job_listing_index(request):
+    """
+    Port of Laravel PublicJobListingController@index
+    Route: GET /public-job-listing
+    """
+    try:
+        per_page = int(request.query_params.get('per_page', 20))
+    except (TypeError, ValueError):
+        per_page = 20
+    if per_page <= 0:
+        per_page = 20
+    per_page = min(per_page, 50)
+
+    page = int(request.query_params.get('page', 1) or 1)
+    if page <= 0:
+        page = 1
+
+    qs = Projects.objects.filter(published=1, closed_at__isnull=True).order_by('-created_at')
+    total = qs.count()
+    start = (page - 1) * per_page
+    end = start + per_page
+    projects_page = list(qs[start:end])
+
+    # Preload social profiles for creatorSocial equivalent
+    user_ids = {p.user_id for p in projects_page}
+    social_map = {
+        sp.user_id: sp
+        for sp in UserSocialProfile.objects.filter(user_id__in=user_ids)
+    }
+
+    data = []
+    for project in projects_page:
+        social = social_map.get(project.user_id)
+        creator_social = None
+        if social:
+            creator_social = {
+                "id": social.id,
+                "user_id": social.user_id,
+                "followers": social.followers,
+            }
+
+        item = {
+            "uuid": project.uuid,
+            "title": project.custom_title or project.title,
+            "creator_social": creator_social,
+            "subtitle": project.subtitle,
+            "description": project.description,
+            "budget": {
+                "min": project.min_budget,
+                "max": project.max_budget,
+                "currency": project.currency,
+                "open_to_negotiate": bool(project.open_to_negotiate),
+            },
+            "location": {
+                "city": project.city,
+                "country": project.country,
+                "working_location": project.working_location,
+            },
+            "dates": {
+                "created_at": project.created_at,
+                "expiry_at": project.created_at,  # Laravel uses accessor; FE mainly cares about presence
+            },
+            "media": {
+                "logo": project.logo,
+                "banner": project.banner_image,
+            },
+            "requirements": {
+                # Full Laravel relations require extra pivot models; keep shape with minimal data.
+                "job_types": [],
+                "content_verticals": [],
+                "platforms": [],
+                "softwares": [],
+                "creative_styles": [],
+                "languages": project.required_languages or [],
+            },
+            "flags": {
+                "hackathon": bool(project.hackathon),
+                "require_cover_letter": False,
+            },
+        }
+        data.append(item)
+
+    last_page = (total + per_page - 1) // per_page if per_page else 1
+
+    return Response(
+        {
+            "status": "success",
+            "count": total,
+            "data": data,
+            "pagination": {
+                "current_page": page,
+                "last_page": last_page,
+                "per_page": per_page,
+            },
+        },
+        status=200,
+    )
+
+
+@api_view(['PATCH'])
+def free_job_posting_allocate(request):
+    """
+    Port of Laravel FreeJobPostingController@allocate
+    Route: PATCH /freejobpost
+    """
+    uuid = request.data.get("uuid")
+    coupon_code = request.data.get("coupon_code")
+
+    if not uuid or not coupon_code:
+        return Response(
+            {
+                "success": False,
+                "message": "uuid and coupon_code are required.",
+            },
+            status=400,
+        )
+
+    valid_coupons = ["ROSTERX1BS", "FREE1JOB", "ROSTERXBEACONS"]
+    if coupon_code not in valid_coupons:
+        return Response(
+            {
+                "success": False,
+                "message": "Invalid coupon code.",
+            },
+            status=400,
+        )
+
+    user = Users.objects.filter(uuid=uuid).first()
+    if not user:
+        return Response(
+            {
+                "success": False,
+                "message": "User not found.",
+            },
+            status=404,
+        )
+
+    customer = Customers.objects.filter(user=user).first()
+    if not customer:
+        return Response(
+            {
+                "success": False,
+                "message": "Customer record not found.",
+            },
+            status=404,
+        )
+
+    # Hard-code payment_type/status ids as in Laravel controller (2,2)
+    customer.payment_type_id = 2
+    customer.payment_status_id = 2
+    customer.expired_at = timezone.now() + timezone.timedelta(days=30)
+    customer.save(update_fields=["payment_type_id", "payment_status_id", "expired_at", "updated_at"])
+
+    return Response(
+        {
+            "success": True,
+            "message": "Free job posting allocated successfully.",
+            "expires_on": customer.expired_at,
+        },
+        status=200,
+    )
+
+
+@api_view(['PATCH'])
+def job_posting_edit_update(request, uuid):
+    """
+    Lightweight port of JobPostingEditController@update
+    Route: PATCH /job-posting/edit/{uuid}
+    """
+    user = get_authenticated_user(request)
+    if not user:
+        return Response(
+            {
+                "status": False,
+                "message": "Unauthorized: Token missing or invalid.",
+            },
+            status=401,
+        )
+
+    project = Projects.objects.filter(uuid=uuid).first()
+    if not project:
+        return Response(
+            {
+                "status": False,
+                "message": "Project not found.",
+            },
+            status=404,
+        )
+
+    forbidden = {
+        "id",
+        "uuid",
+        "user_id",
+        "created_at",
+        "updated_at",
+        "deleted_at",
+        "match_token",
+        "accepted_at",
+    }
+
+    payload = dict(request.data)
+    for key in list(payload.keys()):
+        if key in forbidden:
+            payload.pop(key, None)
+
+    # Normalize JSON fields similar to Laravel casting
+    if "interested_in" in payload:
+        val = payload["interested_in"]
+        if isinstance(val, str):
+            # Assume JSON string
+            try:
+                import json
+
+                val = json.loads(val)
+            except Exception:
+                val = [val]
+        payload["interested_in"] = val
+
+    if "required_languages" in payload:
+        val = payload["required_languages"]
+        if isinstance(val, str):
+            try:
+                import json
+
+                val = json.loads(val)
+            except Exception:
+                val = [val]
+        payload["required_languages"] = val
+
+    for field, value in payload.items():
+        if hasattr(project, field):
+            setattr(project, field, value)
+
+    project.updated_at = timezone.now()
+    project.save()
+
+    return Response(
+        {
+            "status": True,
+            "message": "Project updated successfully.",
+            "data": ProjectSerializer(project).data,
+        },
+        status=200,
+    )
+
+
+# ============================================================================
+# Option A stubs for remaining Laravel controllers
+# (Questionnaire, Callback, Vouching, Crew, Custom Screening, ContentForm@get)
+# ============================================================================
+
+@api_view(['GET'])
+def questionnaire_get(request, id):
+    """
+    Stub for Laravel QuestionnaireController@get
+    Route: GET /questionnaire/{id}
+    """
+    return Response(
+        {
+            "status": "error",
+            "message": "Questionnaire API is not yet implemented on Python backend.",
+            "questionnaire": None,
+        },
+        status=501,
+    )
+
+
+@api_view(['POST'])
+def questionnaire_add(request):
+    """
+    Stub for Laravel QuestionnaireController@add
+    Route: POST /questionnaire/add
+    """
+    return Response(
+        {
+            "status": "error",
+            "message": "Questionnaire submission is not yet implemented on Python backend.",
+        },
+        status=501,
+    )
+
+
+@api_view(['POST'])
+def callback_stripe(request):
+    """
+    Stub for Laravel CallbackController@stripe
+    Route: POST /callback/stripe
+    """
+    return Response(
+        {
+            "status": "error",
+            "message": "Stripe callback handling is not yet implemented on Python backend.",
+        },
+        status=501,
+    )
+
+
+@api_view(['POST'])
+def callback_post_transaction_slack(request):
+    """
+    Stub for Laravel CallbackController@postTransactionSlackHandle
+    Route: POST /callback/post-transaction/slack
+    """
+    return Response(
+        {
+            "status": "error",
+            "message": "Post-transaction Slack handler is not yet implemented on Python backend.",
+        },
+        status=501,
+    )
+
+
+@api_view(['POST'])
+def callback_post_transaction_email(request):
+    """
+    Stub for Laravel CallbackController@postTransactionEmailHandle
+    Route: POST /callback/post-transaction/email
+    """
+    return Response(
+        {
+            "status": "error",
+            "message": "Post-transaction email handler is not yet implemented on Python backend.",
+        },
+        status=501,
+    )
+
+
+@api_view(['POST'])
+def callback_webflow(request):
+    """
+    Stub for Laravel CallbackController@webflow
+    Route: POST /callback/webflow
+    """
+    return Response(
+        {
+            "status": "error",
+            "message": "Webflow callback handling is not yet implemented on Python backend.",
+        },
+        status=501,
+    )
+
+
+@api_view(['GET'])
+def vouching_verify_token(request):
+    """
+    Stub for VouchingController@verifyToken
+    Route: (to be wired) /vouching/verify-token
+    """
+    return Response(
+        {
+            "status": "error",
+            "message": "Vouching verifyToken is not yet implemented on Python backend.",
+        },
+        status=501,
+    )
+
+
+@api_view(['POST'])
+def vouching_create(request):
+    """
+    Stub for VouchingController@create
+    """
+    return Response(
+        {
+            "status": "error",
+            "message": "Vouching create is not yet implemented on Python backend.",
+        },
+        status=501,
+    )
+
+
+@api_view(['POST'])
+def vouching_log_attempt(request):
+    """
+    Stub for VouchingController@logAttempt
+    """
+    return Response(
+        {
+            "status": "error",
+            "message": "Vouching logAttempt is not yet implemented on Python backend.",
+        },
+        status=501,
+    )
+
+
+@api_view(['GET'])
+def vouching_status(request):
+    """
+    Stub for VouchingController@status
+    """
+    return Response(
+        {
+            "status": "error",
+            "message": "Vouching status is not yet implemented on Python backend.",
+        },
+        status=501,
+    )
+
+
+@api_view(['POST'])
+def vouching_creator_response(request):
+    """
+    Stub for VouchingController@creatorResponse
+    """
+    return Response(
+        {
+            "status": "error",
+            "message": "Vouching creatorResponse is not yet implemented on Python backend.",
+        },
+        status=501,
+    )
+
+
+@api_view(['GET'])
+def vouching_list(request):
+    """
+    Stub for VouchingController@list
+    """
+    return Response(
+        {
+            "status": "error",
+            "message": "Vouching list is not yet implemented on Python backend.",
+        },
+        status=501,
+    )
+
+
+@api_view(['GET'])
+def crew_index(request):
+    """
+    Stub for CrewController@index
+    """
+    return Response(
+        {
+            "status": "error",
+            "message": "Crew index is not yet implemented on Python backend.",
+            "data": [],
+        },
+        status=501,
+    )
+
+
+@api_view(['POST'])
+def crew_store(request):
+    """
+    Stub for CrewController@store
+    """
+    return Response(
+        {
+            "status": "error",
+            "message": "Crew store is not yet implemented on Python backend.",
+        },
+        status=501,
+    )
+
+
+@api_view(['DELETE'])
+def crew_destroy(request, uuid=None):
+    """
+    Stub for CrewController@destroy
+    """
+    return Response(
+        {
+            "status": "error",
+            "message": "Crew destroy is not yet implemented on Python backend.",
+        },
+        status=501,
+    )
+
+
+@api_view(['GET'])
+def custom_screening_question_index(request):
+    """
+    Stub for CustomScreeningQuestionController@index
+    """
+    return Response(
+        {
+            "status": "error",
+            "message": "Custom screening question index is not yet implemented on Python backend.",
+            "questions": [],
+        },
+        status=501,
+    )
+
+
+@api_view(['POST'])
+def custom_screening_question_store(request):
+    """
+    Stub for CustomScreeningQuestionController@store
+    """
+    return Response(
+        {
+            "status": "error",
+            "message": "Custom screening question store is not yet implemented on Python backend.",
+        },
+        status=501,
+    )
+
+
+@api_view(['PATCH'])
+def custom_screening_question_update(request, uuid=None):
+    """
+    Stub for CustomScreeningQuestionController@update
+    """
+    return Response(
+        {
+            "status": "error",
+            "message": "Custom screening question update is not yet implemented on Python backend.",
+        },
+        status=501,
+    )
+
+
+@api_view(['DELETE'])
+def custom_screening_question_destroy(request, uuid=None):
+    """
+    Stub for CustomScreeningQuestionController@destroy
+    """
+    return Response(
+        {
+            "status": "error",
+            "message": "Custom screening question destroy is not yet implemented on Python backend.",
+        },
+        status=501,
+    )
+
+
+@api_view(['POST'])
+def custom_screening_question_store_answer(request):
+    """
+    Stub for CustomScreeningQuestionController@storeAnswer
+    """
+    return Response(
+        {
+            "status": "error",
+            "message": "Custom screening question storeAnswer is not yet implemented on Python backend.",
+        },
+        status=501,
+    )
+
+
+@api_view(['GET'])
+def custom_screening_question_applicant_answers(request, uuid=None):
+    """
+    Stub for CustomScreeningQuestionController@applicantAnswers
+    """
+    return Response(
+        {
+            "status": "error",
+            "message": "Custom screening question applicantAnswers is not yet implemented on Python backend.",
+            "answers": [],
+        },
+        status=501,
+    )
+
+
+@api_view(['GET'])
+def content_forms_get(request):
+    """
+    Stub for ContentFormController@get
+    Route: GET /contentforms/get
+    """
+    return Response(
+        {
+            "status": "error",
+            "message": "Content form detail API is not yet implemented on Python backend.",
+            "content_form": None,
+        },
+        status=501,
+    )
+
 # --- Webhooks & Utilities ---
 
 @api_view(['GET'])
@@ -4809,7 +5614,14 @@ def user_todo_create(request):
 @api_view(['PATCH'])
 def user_todo_update(request, id):
     """Update a todo list"""
+    user = get_authenticated_user(request)
+    if not user:
+        return ApiResponse(status='error', message='User not authenticated', code=401)
+        
     todo = get_object_or_404(UserTodos, id=id)
+    if todo.user != user:
+        return ApiResponse(status='error', message='Unauthorized', code=403)
+        
     if 'list' in request.data:
         todo.list = request.data.get('list')
     if 'status' in request.data:
@@ -4824,7 +5636,14 @@ def user_todo_update(request, id):
 @api_view(['DELETE'])
 def user_todo_delete(request, id):
     """Delete a todo list"""
+    user = get_authenticated_user(request)
+    if not user:
+        return ApiResponse(status='error', message='User not authenticated', code=401)
+        
     todo = get_object_or_404(UserTodos, id=id)
+    if todo.user != user:
+        return ApiResponse(status='error', message='Unauthorized', code=403)
+        
     todo.delete()
     return ApiResponse(status='success', message='Todo deleted successfully')
 
@@ -4832,12 +5651,19 @@ def user_todo_delete(request, id):
 @api_view(['GET'])
 def referral_records_index(request):
     """List referral codes matching filters"""
+    user = get_authenticated_user(request)
+    if not user:
+        return ApiResponse(status='error', message='User not authenticated', code=401)
+        
     referrals = ReferralCodes.objects.all()
     
-    # Filter by referrer if provided
-    referrer_uuid = request.query_params.get('referrer_id')
-    if referrer_uuid:
-        referrals = referrals.filter(referrer__uuid=referrer_uuid)
+    if user.account_type != 'admin':
+        referrals = referrals.filter(referrer=user)
+    else:    
+        # Filter by referrer if provided (for admin)
+        referrer_uuid = request.query_params.get('referrer_id')
+        if referrer_uuid:
+            referrals = referrals.filter(referrer__uuid=referrer_uuid)
     
     # Matching Laravel's filtering logic for 'user' account type
     referrals = referrals.filter(user__account_type='user', user__deleted_at__isnull=True)
@@ -4849,10 +5675,17 @@ def referral_records_index(request):
 @api_view(['GET'])
 def referral_paid_records(request):
     """List referral codes for paid users"""
+    user = get_authenticated_user(request)
+    if not user:
+        return ApiResponse(status='error', message='User not authenticated', code=401)
+        
     referrals = ReferralCodes.objects.filter(
         user__account_type='user',
         user__deleted_at__isnull=True
     ).exclude(user__customer__payment_status__name='Unpaid')
+    
+    if user.account_type != 'admin':
+        referrals = referrals.filter(referrer=user)
     
     serializer = ReferralCodeSerializer(referrals, many=True)
     return ApiResponse(data=serializer.data)

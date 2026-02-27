@@ -1,10 +1,49 @@
+from django.db.models import F
+from django.db.utils import OperationalError, ProgrammingError
+
 from roster_api.serializers import (
-    UserSkillSerializer, UserJobTypeSerializer, UserContentVerticalSerializer,
-    UserPlatformSerializer, UserSoftwareSerializer, UserEquipmentSerializer,
-    UserCreativeStyleSerializer, UserPricingSerializer, UserCreatorSerializer,
-    UserLanguageSerializer, CustomerSerializer, UserJobTypes
+    UserPricingSerializer,
+    UserCreatorSerializer,
+    UserSocialProfileSerializer,
 )
-from roster_api.models import UserPricing
+from roster_api.models import (
+    ContentVerticals,
+    CreativeStyles,
+    Equipment,
+    JobTypes,
+    Platforms,
+    Skills,
+    Software,
+    UserJobTypes,
+    UserLanguage,
+    UserPricing,
+    UserSocialProfile,
+)
+
+
+def _is_mysql_missing_table_or_column(exc: Exception) -> bool:
+    """
+    MySQL error codes we want to treat as "schema not present yet" in staging:
+    - 1146: table doesn't exist
+    - 1054: unknown column
+    """
+    args = getattr(exc, "args", None)
+    if not args or not isinstance(args, (list, tuple)) or len(args) < 1:
+        return False
+    return args[0] in (1146, 1054)
+
+
+def _basic_resource(obj):
+    """
+    Mirrors Laravel resources like UserSkillResource/UserPlatformResource/etc:
+    { id: uuid, icon, name, description }
+    """
+    return {
+        "id": getattr(obj, "uuid", None),
+        "icon": getattr(obj, "icon", None),
+        "name": getattr(obj, "name", None),
+        "description": getattr(obj, "description", None),
+    }
 
 def format_date(dt):
     """Format datetime as ISO string or return None"""
@@ -29,8 +68,7 @@ def get_user_resource_dict(user):
     except Exception:
         pass
     
-    # 2. Creators
-    # Simplified version of the Laravel logic which filters and sorts creators
+    # 2. Creators (best-effort)
     try:
         creators = user.usercreators_set.exclude(deleted_at__isnull=False)
         has_creators = creators.exists()
@@ -43,53 +81,102 @@ def get_user_resource_dict(user):
     is_activated = bool(user.activated_at)
     is_verified = bool(user.verified_at)
     
-    # Pricing
+    # Pricing (best-effort)
     try:
         pricing = UserPricing.objects.filter(user=user).first()
         pricing_data = UserPricingSerializer(pricing).data if pricing else None
     except Exception:
         pricing_data = None
 
-    # Foreign Relations (many-to-one or many-to-many through)
+    # Social profile (best-effort)
     try:
-        skills_data = UserSkillSerializer(user.userskills_set.all(), many=True).data
+        social_profile = UserSocialProfile.objects.filter(user=user).first()
+        social_profiles_data = UserSocialProfileSerializer(social_profile).data if social_profile else None
     except Exception:
-        skills_data = []
+        social_profiles_data = None
+
+    # Foreign relations should match Laravel resources:
+    # - skills/platforms/softwares/equipments/creative_styles/content_verticals -> related entity resources
+    # - job_types -> related entity resource + primary_job from pivot
+    try:
+        skills_data = [_basic_resource(s) for s in Skills.objects.filter(userskills__user=user).distinct()]
+    except (OperationalError, ProgrammingError) as e:
+        if _is_mysql_missing_table_or_column(e):
+            skills_data = []
+        else:
+            raise
 
     try:
-        job_types_data = UserJobTypeSerializer(user.userjobtypes_set.all(), many=True).data
-    except Exception:
-        job_types_data = []
+        content_verticals_data = [
+            _basic_resource(v)
+            for v in ContentVerticals.objects.filter(usercontentverticals__user=user).distinct()
+        ]
+    except (OperationalError, ProgrammingError) as e:
+        if _is_mysql_missing_table_or_column(e):
+            content_verticals_data = []
+        else:
+            raise
 
     try:
-        content_verticals_data = UserContentVerticalSerializer(user.usercontentverticals_set.all(), many=True).data
-    except Exception:
-        content_verticals_data = []
+        platforms_data = [_basic_resource(p) for p in Platforms.objects.filter(userplatforms__user=user).distinct()]
+    except (OperationalError, ProgrammingError) as e:
+        if _is_mysql_missing_table_or_column(e):
+            platforms_data = []
+        else:
+            raise
 
     try:
-        platforms_data = UserPlatformSerializer(user.userplatforms_set.all(), many=True).data
-    except Exception:
-        platforms_data = []
+        softwares_data = [_basic_resource(s) for s in Software.objects.filter(usersoftware__user=user).distinct()]
+    except (OperationalError, ProgrammingError) as e:
+        if _is_mysql_missing_table_or_column(e):
+            softwares_data = []
+        else:
+            raise
 
     try:
-        softwares_data = UserSoftwareSerializer(user.usersoftware_set.all(), many=True).data
-    except Exception:
-        softwares_data = []
+        equipments_data = [_basic_resource(e) for e in Equipment.objects.filter(userequipments__user=user).distinct()]
+    except (OperationalError, ProgrammingError) as e:
+        if _is_mysql_missing_table_or_column(e):
+            equipments_data = []
+        else:
+            raise
 
     try:
-        equipments_data = UserEquipmentSerializer(user.userequipments_set.all(), many=True).data
-    except Exception:
-        equipments_data = []
+        creative_styles_data = [
+            _basic_resource(cs) for cs in CreativeStyles.objects.filter(usercreativestyles__user=user).distinct()
+        ]
+    except (OperationalError, ProgrammingError) as e:
+        if _is_mysql_missing_table_or_column(e):
+            creative_styles_data = []
+        else:
+            raise
 
     try:
-        creative_styles_data = UserCreativeStyleSerializer(user.usercreativestyles_set.all(), many=True).data
-    except Exception:
-        creative_styles_data = []
-        
+        job_types_data = [
+            {
+                **_basic_resource(jt),
+                "primary_job": getattr(jt, "primary_job", None),
+            }
+            for jt in JobTypes.objects.filter(userjobtypes__user=user)
+            .annotate(primary_job=F("userjobtypes__primary_job"))
+            .distinct()
+        ]
+    except (OperationalError, ProgrammingError) as e:
+        if _is_mysql_missing_table_or_column(e):
+            job_types_data = []
+        else:
+            raise
+
     try:
-        languages_data = UserLanguageSerializer(user.userlanguage_set.all(), many=True).data
-    except Exception:
-        languages_data = []
+        languages_data = [
+            {"id": l.uuid, "proficiency": l.proficiency, "language": l.name}
+            for l in UserLanguage.objects.filter(user=user).order_by("created_at")
+        ]
+    except (OperationalError, ProgrammingError) as e:
+        if _is_mysql_missing_table_or_column(e):
+            languages_data = []
+        else:
+            raise
 
     # Customer info
     customer_data = None
@@ -160,7 +247,7 @@ def get_user_resource_dict(user):
         'softwares': softwares_data,
         'equipments': equipments_data,
         'creative_styles': creative_styles_data,
-        'social_profiles': None, # new SocialProfileResource($this->social_profiles)
+        'social_profiles': social_profiles_data,
         'customer': customer_data,
         'creators': creators_data,
         'has_creators': has_creators,

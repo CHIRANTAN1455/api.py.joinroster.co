@@ -35,8 +35,21 @@ from .views import (
     content_forms_index, project_types_index, project_types_user_index, reasons_index, referrals_index,
     settings_index, settings_store, settings_update, settings_destroy,
     user_todo_get_first, user_todo_get_last, user_todo_create, user_todo_update, user_todo_delete,
-    referral_records_index, referral_paid_records
+    referral_records_index, referral_paid_records,
+    public_job_listing_index, free_job_posting_allocate, job_posting_edit_update,
+    # Option A stubs
+    questionnaire_get, questionnaire_add,
+    callback_stripe, callback_post_transaction_slack, callback_post_transaction_email, callback_webflow,
+    vouching_verify_token, vouching_create, vouching_log_attempt, vouching_status,
+    vouching_creator_response, vouching_list,
+    crew_index, crew_store, crew_destroy,
+    custom_screening_question_index, custom_screening_question_store,
+    custom_screening_question_update, custom_screening_question_destroy,
+    custom_screening_question_store_answer, custom_screening_question_applicant_answers,
+    content_forms_get,
 )
+
+from .views import user_notifications
 
 from .views import (
     skill_store, skill_update, skill_destroy, skill_show,
@@ -156,17 +169,19 @@ urlpatterns = [
     path('auth/broadcasting', views.auth_broadcasting, name='auth_broadcasting'),
     
     # User Management Endpoints
-    path('user/<uuid>', views.user_update, name='user_update'),
-    path('user/<uuid>/timezone', views.user_update_timezone, name='user_update_timezone'),
-    path('user/<uuid>/policy', views.user_update_policy, name='user_update_policy'),
-    path('user/<uuid>/delete', views.user_delete, name='user_delete'),
+    path('user/<uuid:uuid>', views.user_update, name='user_update'),
+    path('user/<uuid:uuid>/timezone', views.user_update_timezone, name='user_update_timezone'),
+    path('user/<uuid:uuid>/policy', views.user_update_policy, name='user_update_policy'),
+    path('user/<uuid:uuid>/policy-acceptance', views.user_update_policy, name='user_update_policy_acceptance'),
+    path('user/<uuid:uuid>/delete', views.user_delete, name='user_delete'),
     path('user/referral/<code>', views.user_by_referral_code, name='user_by_referral_code'),
-    path('user/<uuid>/platforms', views.user_update_platforms, name='user_update_platforms'),
-    path('user/<uuid>/jobtypes', views.user_update_jobtypes_pricing, name='user_update_jobtypes_pricing'),
-    path('user/<uuid>/content-vertical', views.user_update_content_vertical, name='user_update_content_vertical'),
-    path('user/<uuid>/unsubscribe', views.user_unsubscribe, name='user_unsubscribe'),
+    path('user/<uuid:uuid>/platforms', views.user_update_platforms, name='user_update_platforms'),
+    path('user/<uuid:uuid>/jobtypes', views.user_update_jobtypes_pricing, name='user_update_jobtypes_pricing'),
+    path('user/<uuid:uuid>/content-vertical', views.user_update_content_vertical, name='user_update_content_vertical'),
+    path('user/<uuid:uuid>/unsubscribe', views.user_unsubscribe, name='user_unsubscribe'),
     path('user/<id>/revert-time', views.user_revert_update_time, name='user_revert_update_time'),
-    path('user/<uuid>/post-slack', views.user_post_to_slack, name='user_post_to_slack'),
+    path('user/<uuid:uuid>/post-slack', views.user_post_to_slack, name='user_post_to_slack'),
+    path('user/<uuid:uuid>/notifications', user_notifications, name='user_notifications'),
     path('user-to-do', user_todo_get_first, name='user_todo_get_first'),
     path('user-to-do/last', user_todo_get_last, name='user_todo_get_last'),
     path('user-to-do/add', user_todo_create, name='user_todo_create'),
@@ -178,22 +193,22 @@ urlpatterns = [
     # User Social Accounts Endpoints
     path('user/social', views.user_social_index, name='user_social_index'),
     path('user/social/create', views.user_social_create, name='user_social_create'),
-    path('user/social/<uuid>', views.user_social_delete, name='user_social_delete'),
+    path('user/social/<uuid:uuid>', views.user_social_delete, name='user_social_delete'),
     path('user/social/content-topics', views.user_social_content_topics, name='user_social_content_topics'),
     
     # User Payment Methods Endpoints
     path('user/payment', views.user_payment_index, name='user_payment_index'),
     path('user/payment/create', views.user_payment_create, name='user_payment_create'),
-    path('user/payment/<uuid>', views.user_payment_delete, name='user_payment_delete'),
+    path('user/payment/<uuid:uuid>', views.user_payment_delete, name='user_payment_delete'),
     
     # User Creator Endpoints
     path('user/creator', views.user_creator_index, name='user_creator_index'),
     path('user/creator/unverified', views.user_creator_unverified, name='user_creator_unverified'),
     path('user/creator/search', views.user_creator_search, name='user_creator_search'),
     path('user/creator/add', views.user_creator_add, name='user_creator_add'),
-    path('user/creator/<uuid>', views.user_creator_update, name='user_creator_update'),
-    path('user/creator/<uuid>/delete', views.user_creator_delete, name='user_creator_delete'),
-    path('user/creator/<uuid>/projects', views.user_creator_projects, name='user_creator_projects'),
+    path('user/creator/<uuid:uuid>', views.user_creator_update, name='user_creator_update'),
+    path('user/creator/<uuid:uuid>/delete', views.user_creator_delete, name='user_creator_delete'),
+    path('user/creator/<uuid:uuid>/projects', views.user_creator_projects, name='user_creator_projects'),
     path('user/creator/content/topics', views.user_creator_get_content_topics, name='user_creator_get_content_topics'),
     path('user/creator/info', views.user_creator_get_info, name='user_creator_get_info'),
     path('user/creator/info/public', views.user_creator_get_public_info, name='user_creator_get_public_info'),
@@ -202,46 +217,94 @@ urlpatterns = [
     path('user/creator/username/<username>', views.user_creator_get_by_username, name='user_creator_get_by_username'),
     path('user/creator/group/create', views.user_creator_create_group, name='user_creator_create_group'),
     path('user/creator/search/public', views.user_creator_search_public, name='user_creator_search_public'),
+
+    # User Creator Aliases (frontend uses 'usercreator' without slash)
+    path('usercreator', views.user_creator_index, name='user_creator_index_alias'),
+    path('usercreator/unverified', views.user_creator_unverified, name='user_creator_unverified_alias'),
+    path('usercreator/search', views.user_creator_search, name='user_creator_search_alias'),
+
+    # User Verification Alias (frontend uses 'userverification')
+    path('userverification', views.user_verification_link_index, name='user_verification_alias'),
     
     # User Verification Link Endpoints
     path('user/verification/link', views.user_verification_link_index, name='user_verification_link_index'),
     path('user/verification/link/add', views.user_verification_link_add, name='user_verification_link_add'),
     path('user/verification/link/addMany', views.user_verification_link_add_many, name='user_verification_link_add_many'),
-    path('user/verification/link/<uuid>/delete', views.user_verification_link_delete, name='user_verification_link_delete'),
+    path('user/verification/link/<uuid:uuid>/delete', views.user_verification_link_delete, name='user_verification_link_delete'),
 
     # User Project Endpoints
     path('userproject', user_project_index, name='user_project_index'),
     path('userproject/public', user_project_public_index, name='user_project_public_index'),
     path('userproject/add', user_project_add, name='user_project_add'),
-    path('userproject/<uuid>/update', user_project_update, name='user_project_update'),
-    path('userproject/<uuid>', user_project_delete, name='user_project_delete'),
+    path('userproject/<uuid:uuid>/update', user_project_update, name='user_project_update'),
+    path('userproject/<uuid:uuid>', user_project_delete, name='user_project_delete'),
     path('userproject/info', user_project_info, name='user_project_info'),
 
     # Project Endpoints
     path('project', project_index, name='project_index'),
+    path('project/', project_index, name='project_index_slash'),
     path('project/public', project_public_index, name='project_public_index'),
     path('project/store', project_store, name='project_store'),
-    path('project/<uuid>', project_get, name='project_get'),
-    path('project/<uuid>/update', project_update, name='project_update'),
-    path('project/<uuid>/status', project_status, name='project_status'),
-    path('project/<uuid>/cancel', project_cancel, name='project_cancel'),
-    path('project/<uuid>/response', project_response, name='project_response'),
-    path('project/<uuid>/milestone', project_milestone, name='project_milestone'),
-    path('project/<uuid>/review', project_review, name='project_review'),
-    path('project/<uuid>/feedback', project_feedback, name='project_feedback'),
-    path('project/<uuid>/match-score', project_match_score, name='project_match_score'),
-    path('project/<uuid>/history', project_history, name='project_history'),
-    path('project/<uuid>/deposit', project_deposit, name='project_deposit'),
-    path('project/<uuid>/purchase', project_purchase, name='project_purchase'),
+    path('project/<uuid:uuid>', project_get, name='project_get'),
+    path('project/<uuid:uuid>/update', project_update, name='project_update'),
+    path('project/<uuid:uuid>/status', project_status, name='project_status'),
+    path('project/<uuid:id>/cancel', project_cancel, name='project_cancel'),
+    path('project/<uuid:id>/response', project_response, name='project_response'),
+    path('project/<uuid:id>/milestone', project_milestone, name='project_milestone'),
+    path('project/<uuid:id>/review', project_review, name='project_review'),
+    path('project/<uuid:id>/feedback', project_feedback, name='project_feedback'),
+    path('project/<uuid:uuid>/match-score', project_match_score, name='project_match_score'),
+    path('project/<uuid:id>/history', project_history, name='project_history'),
+    path('project/<uuid:uuid>/deposit', project_deposit, name='project_deposit'),
+    path('project/<uuid:uuid>/purchase', project_purchase, name='project_purchase'),
     path('project/alert', send_project_alert, name='send_project_alert'),
     path('project/alerts/2-days', send_project_alert_2_days, name='send_project_alert_2_days'),
-    path('project/<uuid>/conversation', project_conversation, name='project_conversation'),
+    path('project/<uuid:uuid>/conversation', project_conversation, name='project_conversation'),
+
+    # Public Job Listing & Free Job Posting
+    path('public-job-listing', public_job_listing_index, name='public_job_listing_index'),
+    path('freejobpost', free_job_posting_allocate, name='free_job_posting_allocate'),
+    path('job-posting/edit/<uuid:uuid>', job_posting_edit_update, name='job_posting_edit_update'),
+
+    # QuestionnaireController stubs
+    path('questionnaire/<id>', questionnaire_get, name='questionnaire_get'),
+    path('questionnaire/add', questionnaire_add, name='questionnaire_add'),
+
+    # CallbackController stubs
+    path('callback/stripe', callback_stripe, name='callback_stripe'),
+    path('callback/post-transaction/slack', callback_post_transaction_slack, name='callback_post_transaction_slack'),
+    path('callback/post-transaction/email', callback_post_transaction_email, name='callback_post_transaction_email'),
+    path('callback/webflow', callback_webflow, name='callback_webflow'),
+
+    # VouchingController stubs (exact paths can be adjusted to match FE usage)
+    path('vouching/verify-token', vouching_verify_token, name='vouching_verify_token'),
+    path('vouching/create', vouching_create, name='vouching_create'),
+    path('vouching/log-attempt', vouching_log_attempt, name='vouching_log_attempt'),
+    path('vouching/status', vouching_status, name='vouching_status'),
+    path('vouching/creator-response', vouching_creator_response, name='vouching_creator_response'),
+    path('vouching/list', vouching_list, name='vouching_list'),
+
+    # CrewController stubs
+    path('crew', crew_index, name='crew_index'),
+    path('crew', crew_store, name='crew_store'),
+    path('crew/<uuid:uuid>', crew_destroy, name='crew_destroy'),
+
+    # CustomScreeningQuestionController stubs
+    path('custom-screening/questions', custom_screening_question_index, name='custom_screening_question_index'),
+    path('custom-screening/questions', custom_screening_question_store, name='custom_screening_question_store'),
+    path('custom-screening/questions/<uuid:uuid>', custom_screening_question_update, name='custom_screening_question_update'),
+    path('custom-screening/questions/<uuid:uuid>', custom_screening_question_destroy, name='custom_screening_question_destroy'),
+    path('custom-screening/questions/answer', custom_screening_question_store_answer, name='custom_screening_question_store_answer'),
+    path('custom-screening/questions/<uuid:uuid>/answers', custom_screening_question_applicant_answers, name='custom_screening_question_applicant_answers'),
+
+    # ContentFormController@get stub
+    path('contentforms/get', content_forms_get, name='content_forms_get'),
 
     # Matching Endpoints
     path('matching', matching_index, name='matching_index'),
-    path('matching/<uuid>', matching_get, name='matching_get'),
+    path('matching/<uuid:uuid>', matching_get, name='matching_get'),
     path('matching/store', matching_store, name='matching_store'),
-    path('matching/<uuid>/update', matching_update, name='matching_update'),
+    path('matching/<uuid:uuid>/update', matching_update, name='matching_update'),
     path('matching/editor/update', matching_editor_update, name='matching_editor_update'),
 
     # Editor Endpoints
@@ -255,19 +318,19 @@ urlpatterns = [
 
     # Project Application Endpoints
     path('project/application', project_application_index, name='project_application_index'),
-    path('project/application/<uuid>', project_application_get, name='project_application_get'),
+    path('project/application/<uuid:uuid>', project_application_get, name='project_application_get'),
     path('project/application/store', project_application_store, name='project_application_store'),
-    path('project/application/<uuid>/update', project_application_update, name='project_application_update'),
-    path('project/application/<uuid>/note', project_application_create_note, name='project_application_create_note'),
-    path('project/application/note/<uuid>', project_application_delete_note, name='project_application_delete_note'),
+    path('project/application/<uuid:uuid>/update', project_application_update, name='project_application_update'),
+    path('project/application/<uuid:uuid>/note', project_application_create_note, name='project_application_create_note'),
+    path('project/application/note/<uuid:uuid>', project_application_delete_note, name='project_application_delete_note'),
     path('project/application/rejection/email', project_application_send_rejection_email, name='project_application_send_rejection_email'),
 
     # Project Screening Question Endpoints
-    path('project/<project_uuid>/screening-questions', project_screening_question_index, name='project_screening_question_index'),
-    path('project/<project_uuid>/screening-questions/store', project_screening_question_store, name='project_screening_question_store'),
-    path('project/<project_uuid>/screening-questions/<question_uuid>', project_screening_question_show, name='project_screening_question_show'),
-    path('project/<project_uuid>/screening-questions/<question_uuid>/update', project_screening_question_update, name='project_screening_question_update'),
-    path('project/<project_uuid>/screening-questions/<question_uuid>/delete', project_screening_question_destroy, name='project_screening_question_destroy'),
+    path('project/<uuid:project_uuid>/screening-questions', project_screening_question_index, name='project_screening_question_index'),
+    path('project/<uuid:project_uuid>/screening-questions/store', project_screening_question_store, name='project_screening_question_store'),
+    path('project/<uuid:project_uuid>/screening-questions/<uuid:question_uuid>', project_screening_question_show, name='project_screening_question_show'),
+    path('project/<uuid:project_uuid>/screening-questions/<uuid:question_uuid>/update', project_screening_question_update, name='project_screening_question_update'),
+    path('project/<uuid:project_uuid>/screening-questions/<uuid:question_uuid>/delete', project_screening_question_destroy, name='project_screening_question_destroy'),
 
     # Customer Endpoints
     path('customer/register', customer_register, name='customer_register'),
@@ -279,12 +342,14 @@ urlpatterns = [
 
     # Chat Endpoints
     path('chat', chat_index, name='chat_index'),
-    path('chat/<uuid>', chat_get, name='chat_get'),
-    path('chat/<uuid>/message', chat_message, name='chat_message'),
+    path('chat/<uuid:uuid>', chat_get, name='chat_get'),
+    path('chat/<uuid:uuid>/message', chat_message, name='chat_message'),
     path('chat/custom-message', chat_create_custom_message, name='chat_create_custom_message'),
     path('chat/init', chat_init, name='chat_init'),
     path('chat/init-public', chat_init_public, name='chat_init_public'),
+    path('chat/init/public', chat_init_public, name='chat_init_public_alias'),
     path('chat/received-messages', chat_get_received_messages, name='chat_get_received_messages'),
+    path('chat/received_messages', chat_get_received_messages, name='chat_get_received_messages_alias'),
     path('chat/message/<id>/update', chat_update_message, name='chat_update_message'),
 
     # Favourite Endpoints
@@ -293,6 +358,7 @@ urlpatterns = [
 
     # Profile Visit Endpoints
     path('profile-visit/store', profile_visit_store, name='profile_visit_store'),
+    path('profile-visit', profile_visit_store, name='profile_visit_alias'),
 
     # Additional Matching Endpoints
     path('matching/project/<project_uuid>', matching_get_by_project_id, name='matching_get_by_project_id'),
@@ -425,6 +491,7 @@ urlpatterns = [
     path('editor/<int:id>', editor_show, name='editor_show_id'),
     path('editor/<int:id>/edit', editor_edit, name='editor_edit_id'),
     path('editor/<int:id>/patch', editor_update, name='editor_update_patch'),
+    path('editor/email/<int:id>', email_notification_show, name='editor_email_show'),
     path('editor/<int:id>/verification', editor_verification, name='editor_verification'),
     path('editor/<int:id>/activation/<status>', editor_activation, name='editor_activation'),
     path('editor/<int:id>/invite', editor_invite, name='editor_invite'),
@@ -432,11 +499,11 @@ urlpatterns = [
     path('editor/<int:id>/project/delete/<int:project>', editor_delete_project, name='editor_delete_project'),
     path('editor/<int:id>/creator', editor_creator, name='editor_creator'),
     path('editor/<int:id>/creator/delete/<int:creator>', editor_delete_creator, name='editor_delete_creator'),
-    path('editor/<uuid>/verification/send-email', editor_send_verification_email, name='editor_send_verification_email'),
-    path('editor/verification/<uuid>/note', editor_update_verification_note, name='editor_update_verification_note'),
-    path('editor/verification/<uuid>/approve', editor_approve_verification, name='editor_approve_verification'),
-    path('editor/verification/<uuid>/note/delete', editor_delete_verification_note, name='editor_delete_verification_note'),
-    path('editor/<uuid>/verification-issues', editor_get_verification_issues, name='editor_get_verification_issues'),
+    path('editor/<uuid:uuid>/verification/send-email', editor_send_verification_email, name='editor_send_verification_email'),
+    path('editor/verification/<uuid:uuid>/note', editor_update_verification_note, name='editor_update_verification_note'),
+    path('editor/verification/<uuid:uuid>/approve', editor_approve_verification, name='editor_approve_verification'),
+    path('editor/verification/<uuid:uuid>/note/delete', editor_delete_verification_note, name='editor_delete_verification_note'),
+    path('editor/<uuid:uuid>/verification-issues', editor_get_verification_issues, name='editor_get_verification_issues'),
 
     # Project Extensions
     path('project/add', project_create_view, name='project_add_form'),

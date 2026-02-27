@@ -267,12 +267,12 @@ class ProjectHistorySerializer(serializers.ModelSerializer):
 class ProjectSerializer(serializers.ModelSerializer):
     user = serializers.SerializerMethodField()
     editor = serializers.SerializerMethodField()
-    milestones = ProjectMilestoneSerializer(many=True, read_only=True)
-    content_forms = ContentFormSerializer(many=True, read_only=True)
-    platforms = PlatformSerializer(many=True, read_only=True)
+    milestones = serializers.SerializerMethodField()
+    content_forms = serializers.SerializerMethodField()
+    platforms = serializers.SerializerMethodField()
     previous_references = serializers.SerializerMethodField()
     inspiration_references = serializers.SerializerMethodField()
-    history = ProjectHistorySerializer(many=True, read_only=True)
+    history = serializers.SerializerMethodField()
     budget_text = serializers.SerializerMethodField()
 
     class Meta:
@@ -295,7 +295,7 @@ class ProjectSerializer(serializers.ModelSerializer):
     def get_editor(self, obj):
         editor = obj.editor
         if not editor:
-            return []
+            return None
         return {
             'id': editor.uuid,
             'photo': editor.photo,
@@ -308,14 +308,32 @@ class ProjectSerializer(serializers.ModelSerializer):
             'address': editor.address,
         }
 
+    def get_milestones(self, obj):
+        return ProjectMilestoneSerializer(obj.milestones.filter(deleted_at__isnull=True), many=True).data
+
+    def get_content_forms(self, obj):
+        # Using a subquery/filter if the relationship exists
+        # If it's hasManyThrough in Laravel, it might be a related name or we filter the ManyToMany
+        if hasattr(obj, 'content_forms'):
+            return ContentFormSerializer(obj.content_forms.filter(deleted_at__isnull=True), many=True).data
+        return []
+
+    def get_platforms(self, obj):
+        if hasattr(obj, 'platforms'):
+            return PlatformSerializer(obj.platforms.filter(deleted_at__isnull=True), many=True).data
+        return []
+
     def get_previous_references(self, obj):
-        return ProjectReferenceSerializer(obj.references.filter(type='previous'), many=True).data
+        return ProjectReferenceSerializer(obj.references.filter(type='previous', deleted_at__isnull=True), many=True).data
 
     def get_inspiration_references(self, obj):
-        return ProjectReferenceSerializer(obj.references.filter(type='inspiration'), many=True).data
+        return ProjectReferenceSerializer(obj.references.filter(type='inspiration', deleted_at__isnull=True), many=True).data
+
+    def get_history(self, obj):
+        return ProjectHistorySerializer(obj.history.filter(deleted_at__isnull=True), many=True).data
 
     def get_budget_text(self, obj):
-        if obj.budget:
+        if obj.budget is not None:
             return f"${obj.budget:,.2f}"
         return None
 
