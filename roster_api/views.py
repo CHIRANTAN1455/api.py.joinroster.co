@@ -2,6 +2,7 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiExample
 from django.contrib.auth.hashers import make_password, check_password
+from django.db import models
 from django.utils import timezone
 from django.shortcuts import get_object_or_404
 from .auth_helpers import verify_access_token, check_laravel_password
@@ -43,7 +44,8 @@ from .models import (
     UserJobTypePricing, UserSocialProfile, UserLanguage, UserSoftware,
     UserEquipments, UserCreativeStyles, UserJobTypes, Setting, Files, Permissions, Menus,
     ReferralCodes, UserTodos, UserEmailUnsubscriptions, ProjectMilestones, ProjectReferences, ProjectHistories,
-    ProjectFeedbackUsers, ProjectFeedbackEditors
+    ProjectFeedbackUsers, ProjectFeedbackEditors, Chats, ChatMessages,
+    UserVerifications
 )
 from .serializers import (
     SkillSerializer, 
@@ -1391,7 +1393,7 @@ def user_by_referral_code(request, code):
         user=UserSerializer(user).data
     )
 
-@api_view(['PUT'])
+@api_view(['PUT', 'POST'])
 def user_update_policy(request, uuid):
     """Update user policy acceptance"""
     from .auth_helpers import verify_access_token
@@ -2230,6 +2232,54 @@ def user_verification_link_index(request):
         creators=UserVerificationLinkSerializer(links, many=True).data
     )
 
+
+@api_view(['GET', 'POST'])
+def user_notifications(request, uuid):
+    """Get or update user notification preferences (email unsubscriptions)"""
+    user = get_authenticated_user(request)
+    if not user:
+        return ApiResponse(status='error', message='User not authenticated', code=401)
+
+    target_user = Users.objects.filter(uuid=uuid).first()
+    if not target_user:
+        return ApiResponse(status='error', message='User not found', code=404)
+
+    if user.id != target_user.id:
+        return ApiResponse(status='error', message='Unauthorized', code=403)
+
+    if request.method == 'GET':
+        unsubscriptions = UserEmailUnsubscriptions.objects.filter(user=target_user)
+        data = list(unsubscriptions.values(
+            'id', 'uuid', 'email_notification_id', 'notification_type', 'created_at'
+        ))
+        return ApiResponse(status='success', data=data)
+
+    # POST: toggle notification preference
+    notification_type = request.data.get('notification_type')
+    email_notification_id = request.data.get('email_notification_id')
+
+    existing = UserEmailUnsubscriptions.objects.filter(
+        user=target_user,
+        notification_type=notification_type
+    )
+    if email_notification_id:
+        existing = existing.filter(email_notification_id=email_notification_id)
+
+    if existing.exists():
+        existing.delete()
+        return ApiResponse(status='success', message='Notification re-enabled')
+    else:
+        import uuid as uuid_lib
+        UserEmailUnsubscriptions.objects.create(
+            uuid=str(uuid_lib.uuid4()),
+            user=target_user,
+            email_notification_id=email_notification_id,
+            notification_type=notification_type,
+            created_at=timezone.now(),
+            updated_at=timezone.now()
+        )
+        return ApiResponse(status='success', message='Notification unsubscribed')
+
 @api_view(['POST'])
 def user_verification_link_add(request):
     """Add a verification link"""
@@ -2752,9 +2802,26 @@ def project_update(request, uuid):
 def project_status(request, uuid):
     """Refined project status update with history and milestone checks"""
     user = get_authenticated_user(request)
+    if not user:
+        return ApiResponse(status='error', message='User not authenticated', code=401)
+        
     project = get_object_or_404(Projects, uuid=uuid)
+    
+    # Authz: Only owner or assigned editor can change status
+    if project.user != user and project.editor != user:
+        return ApiResponse(status='error', message='Unauthorized', code=403)
+        
     status = request.data.get('status')
     
+    # Validate status
+    allowed_statuses = ['open', 'pending', 'started', 'completed', 'cancelled']
+    if not status or status not in allowed_statuses:
+        return ApiResponse(
+            status='error', 
+            message=f"Invalid or missing status. Allowed values: {', '.join(allowed_statuses)}", 
+            code=400
+        )
+        
     if project.status == "completed":
         return ApiResponse(message="Project is already completed", status_code=409)
         
@@ -2765,7 +2832,7 @@ def project_status(request, uuid):
             
     # Create History
     ProjectHistories.objects.create(
-        user=user if user else project.user,
+        user=user,
         project=project,
         description=request.data.get('reason') or f"Project status updated to {status}",
         status=status,
@@ -4809,7 +4876,14 @@ def user_todo_create(request):
 @api_view(['PATCH'])
 def user_todo_update(request, id):
     """Update a todo list"""
+    user = get_authenticated_user(request)
+    if not user:
+        return ApiResponse(status='error', message='User not authenticated', code=401)
+        
     todo = get_object_or_404(UserTodos, id=id)
+    if todo.user != user:
+        return ApiResponse(status='error', message='Unauthorized', code=403)
+        
     if 'list' in request.data:
         todo.list = request.data.get('list')
     if 'status' in request.data:
@@ -4824,7 +4898,14 @@ def user_todo_update(request, id):
 @api_view(['DELETE'])
 def user_todo_delete(request, id):
     """Delete a todo list"""
+    user = get_authenticated_user(request)
+    if not user:
+        return ApiResponse(status='error', message='User not authenticated', code=401)
+        
     todo = get_object_or_404(UserTodos, id=id)
+    if todo.user != user:
+        return ApiResponse(status='error', message='Unauthorized', code=403)
+        
     todo.delete()
     return ApiResponse(status='success', message='Todo deleted successfully')
 
@@ -4832,12 +4913,19 @@ def user_todo_delete(request, id):
 @api_view(['GET'])
 def referral_records_index(request):
     """List referral codes matching filters"""
+    user = get_authenticated_user(request)
+    if not user:
+        return ApiResponse(status='error', message='User not authenticated', code=401)
+        
     referrals = ReferralCodes.objects.all()
     
-    # Filter by referrer if provided
-    referrer_uuid = request.query_params.get('referrer_id')
-    if referrer_uuid:
-        referrals = referrals.filter(referrer__uuid=referrer_uuid)
+    if user.account_type != 'admin':
+        referrals = referrals.filter(referrer=user)
+    else:    
+        # Filter by referrer if provided (for admin)
+        referrer_uuid = request.query_params.get('referrer_id')
+        if referrer_uuid:
+            referrals = referrals.filter(referrer__uuid=referrer_uuid)
     
     # Matching Laravel's filtering logic for 'user' account type
     referrals = referrals.filter(user__account_type='user', user__deleted_at__isnull=True)
@@ -4849,10 +4937,17 @@ def referral_records_index(request):
 @api_view(['GET'])
 def referral_paid_records(request):
     """List referral codes for paid users"""
+    user = get_authenticated_user(request)
+    if not user:
+        return ApiResponse(status='error', message='User not authenticated', code=401)
+        
     referrals = ReferralCodes.objects.filter(
         user__account_type='user',
         user__deleted_at__isnull=True
     ).exclude(user__customer__payment_status__name='Unpaid')
+    
+    if user.account_type != 'admin':
+        referrals = referrals.filter(referrer=user)
     
     serializer = ReferralCodeSerializer(referrals, many=True)
     return ApiResponse(data=serializer.data)
