@@ -35,7 +35,8 @@ from .views import (
     content_forms_index, project_types_index, project_types_user_index, reasons_index, referrals_index,
     settings_index, settings_store, settings_update, settings_destroy,
     user_todo_get_first, user_todo_get_last, user_todo_create, user_todo_update, user_todo_delete,
-    referral_records_index, referral_paid_records
+    referral_records_index, referral_paid_records,
+    public_job_listing_index, free_job_posting_allocate, job_posting_edit_update,
 )
 
 from .views import user_notifications
@@ -249,6 +250,11 @@ urlpatterns = [
     path('project/alert', send_project_alert, name='send_project_alert'),
     path('project/alerts/2-days', send_project_alert_2_days, name='send_project_alert_2_days'),
     path('project/<uuid:uuid>/conversation', project_conversation, name='project_conversation'),
+
+    # Public Job Listing & Free Job Posting
+    path('public-job-listing', public_job_listing_index, name='public_job_listing_index'),
+    path('freejobpost', free_job_posting_allocate, name='free_job_posting_allocate'),
+    path('job-posting/edit/<uuid:uuid>', job_posting_edit_update, name='job_posting_edit_update'),
 
     # Matching Endpoints
     path('matching', matching_index, name='matching_index'),

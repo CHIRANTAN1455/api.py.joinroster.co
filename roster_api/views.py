@@ -4937,6 +4937,257 @@ def email_notification_destroy(request, id):
 def email_notification_show(request, id):
     return ApiResponse(notification={})
 
+
+# ============================================================================
+# Public Job Listing & Free Job Posting (Phase 8 lightweight ports)
+# ============================================================================
+
+@api_view(['GET'])
+def public_job_listing_index(request):
+    """
+    Port of Laravel PublicJobListingController@index
+    Route: GET /public-job-listing
+    """
+    try:
+        per_page = int(request.query_params.get('per_page', 20))
+    except (TypeError, ValueError):
+        per_page = 20
+    if per_page <= 0:
+        per_page = 20
+    per_page = min(per_page, 50)
+
+    page = int(request.query_params.get('page', 1) or 1)
+    if page <= 0:
+        page = 1
+
+    qs = Projects.objects.filter(published=1, closed_at__isnull=True).order_by('-created_at')
+    total = qs.count()
+    start = (page - 1) * per_page
+    end = start + per_page
+    projects_page = list(qs[start:end])
+
+    # Preload social profiles for creatorSocial equivalent
+    user_ids = {p.user_id for p in projects_page}
+    social_map = {
+        sp.user_id: sp
+        for sp in UserSocialProfile.objects.filter(user_id__in=user_ids)
+    }
+
+    data = []
+    for project in projects_page:
+        social = social_map.get(project.user_id)
+        creator_social = None
+        if social:
+            creator_social = {
+                "id": social.id,
+                "user_id": social.user_id,
+                "followers": social.followers,
+            }
+
+        item = {
+            "uuid": project.uuid,
+            "title": project.custom_title or project.title,
+            "creator_social": creator_social,
+            "subtitle": project.subtitle,
+            "description": project.description,
+            "budget": {
+                "min": project.min_budget,
+                "max": project.max_budget,
+                "currency": project.currency,
+                "open_to_negotiate": bool(project.open_to_negotiate),
+            },
+            "location": {
+                "city": project.city,
+                "country": project.country,
+                "working_location": project.working_location,
+            },
+            "dates": {
+                "created_at": project.created_at,
+                "expiry_at": project.created_at,  # Laravel uses accessor; FE mainly cares about presence
+            },
+            "media": {
+                "logo": project.logo,
+                "banner": project.banner_image,
+            },
+            "requirements": {
+                # Full Laravel relations require extra pivot models; keep shape with minimal data.
+                "job_types": [],
+                "content_verticals": [],
+                "platforms": [],
+                "softwares": [],
+                "creative_styles": [],
+                "languages": project.required_languages or [],
+            },
+            "flags": {
+                "hackathon": bool(project.hackathon),
+                "require_cover_letter": False,
+            },
+        }
+        data.append(item)
+
+    last_page = (total + per_page - 1) // per_page if per_page else 1
+
+    return Response(
+        {
+            "status": "success",
+            "count": total,
+            "data": data,
+            "pagination": {
+                "current_page": page,
+                "last_page": last_page,
+                "per_page": per_page,
+            },
+        },
+        status=200,
+    )
+
+
+@api_view(['PATCH'])
+def free_job_posting_allocate(request):
+    """
+    Port of Laravel FreeJobPostingController@allocate
+    Route: PATCH /freejobpost
+    """
+    uuid = request.data.get("uuid")
+    coupon_code = request.data.get("coupon_code")
+
+    if not uuid or not coupon_code:
+        return Response(
+            {
+                "success": False,
+                "message": "uuid and coupon_code are required.",
+            },
+            status=400,
+        )
+
+    valid_coupons = ["ROSTERX1BS", "FREE1JOB", "ROSTERXBEACONS"]
+    if coupon_code not in valid_coupons:
+        return Response(
+            {
+                "success": False,
+                "message": "Invalid coupon code.",
+            },
+            status=400,
+        )
+
+    user = Users.objects.filter(uuid=uuid).first()
+    if not user:
+        return Response(
+            {
+                "success": False,
+                "message": "User not found.",
+            },
+            status=404,
+        )
+
+    customer = Customers.objects.filter(user=user).first()
+    if not customer:
+        return Response(
+            {
+                "success": False,
+                "message": "Customer record not found.",
+            },
+            status=404,
+        )
+
+    # Hard-code payment_type/status ids as in Laravel controller (2,2)
+    customer.payment_type_id = 2
+    customer.payment_status_id = 2
+    customer.expired_at = timezone.now() + timezone.timedelta(days=30)
+    customer.save(update_fields=["payment_type_id", "payment_status_id", "expired_at", "updated_at"])
+
+    return Response(
+        {
+            "success": True,
+            "message": "Free job posting allocated successfully.",
+            "expires_on": customer.expired_at,
+        },
+        status=200,
+    )
+
+
+@api_view(['PATCH'])
+def job_posting_edit_update(request, uuid):
+    """
+    Lightweight port of JobPostingEditController@update
+    Route: PATCH /job-posting/edit/{uuid}
+    """
+    user = get_authenticated_user(request)
+    if not user:
+        return Response(
+            {
+                "status": False,
+                "message": "Unauthorized: Token missing or invalid.",
+            },
+            status=401,
+        )
+
+    project = Projects.objects.filter(uuid=uuid).first()
+    if not project:
+        return Response(
+            {
+                "status": False,
+                "message": "Project not found.",
+            },
+            status=404,
+        )
+
+    forbidden = {
+        "id",
+        "uuid",
+        "user_id",
+        "created_at",
+        "updated_at",
+        "deleted_at",
+        "match_token",
+        "accepted_at",
+    }
+
+    payload = dict(request.data)
+    for key in list(payload.keys()):
+        if key in forbidden:
+            payload.pop(key, None)
+
+    # Normalize JSON fields similar to Laravel casting
+    if "interested_in" in payload:
+        val = payload["interested_in"]
+        if isinstance(val, str):
+            # Assume JSON string
+            try:
+                import json
+
+                val = json.loads(val)
+            except Exception:
+                val = [val]
+        payload["interested_in"] = val
+
+    if "required_languages" in payload:
+        val = payload["required_languages"]
+        if isinstance(val, str):
+            try:
+                import json
+
+                val = json.loads(val)
+            except Exception:
+                val = [val]
+        payload["required_languages"] = val
+
+    for field, value in payload.items():
+        if hasattr(project, field):
+            setattr(project, field, value)
+
+    project.updated_at = timezone.now()
+    project.save()
+
+    return Response(
+        {
+            "status": True,
+            "message": "Project updated successfully.",
+            "data": ProjectSerializer(project).data,
+        },
+        status=200,
+    )
+
 # --- Webhooks & Utilities ---
 
 @api_view(['GET'])
