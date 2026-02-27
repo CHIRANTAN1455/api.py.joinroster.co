@@ -3,10 +3,14 @@ from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiExample
 from django.contrib.auth.hashers import make_password, check_password
 from django.db import models
+from django.db.utils import ProgrammingError
 from django.utils import timezone
 from django.shortcuts import get_object_or_404
 from .auth_helpers import verify_access_token, check_laravel_password
 from .user_resource import get_user_resource_dict
+import logging
+
+logger = logging.getLogger(__name__)
 
 def get_authenticated_user(request):
     """
@@ -434,7 +438,15 @@ def profile_get(request):
     data['skills'] = UserSkillSerializer(UserSkills.objects.filter(user=user), many=True).data
     data['platforms'] = UserPlatformSerializer(UserPlatforms.objects.filter(user=user), many=True).data
     data['softwares'] = UserSoftwareSerializer(UserSoftware.objects.filter(user=user), many=True).data
-    data['equipments'] = UserEquipmentSerializer(UserEquipments.objects.filter(user=user), many=True).data
+    try:
+        data['equipments'] = UserEquipmentSerializer(UserEquipments.objects.filter(user=user), many=True).data
+    except ProgrammingError as e:
+        # MySQL missing-table error code (e.g. "Table 'laravel.user_equipments' doesn't exist")
+        if getattr(e, "args", None) and len(e.args) >= 1 and e.args[0] == 1146:
+            logger.warning("Missing table user_equipments; returning empty equipments", exc_info=True)
+            data['equipments'] = []
+        else:
+            raise
     data['creative_styles'] = UserCreativeStyleSerializer(UserCreativeStyles.objects.filter(user=user), many=True).data
     data['job_types'] = UserJobTypeSerializer(UserJobTypes.objects.filter(user=user), many=True).data
     data['languages'] = UserLanguageSerializer(UserLanguage.objects.filter(user=user), many=True).data
@@ -685,13 +697,22 @@ def profile_equipments(request):
         return ApiResponse(error="User not found", status=404)
 
     uuids = request.data.get('equipments', [])
-    UserEquipments.objects.filter(user=user).delete()
-    for uuid in uuids:
-        item = Equipment.objects.filter(uuid=uuid).first()
-        if item:
-            UserEquipments.objects.create(user=user, equipment=item)
+    try:
+        UserEquipments.objects.filter(user=user).delete()
+        for uuid in uuids:
+            item = Equipment.objects.filter(uuid=uuid).first()
+            if item:
+                UserEquipments.objects.create(user=user, equipment=item)
 
-    return ApiResponse(equipments=UserEquipmentSerializer(UserEquipments.objects.filter(user=user), many=True).data)
+        return ApiResponse(equipments=UserEquipmentSerializer(UserEquipments.objects.filter(user=user), many=True).data)
+    except ProgrammingError as e:
+        if getattr(e, "args", None) and len(e.args) >= 1 and e.args[0] == 1146:
+            logger.warning("Missing table user_equipments; cannot update equipments", exc_info=True)
+            return ApiResponse(
+                error="Equipments not available (missing database table user_equipments)",
+                status=503,
+            )
+        raise
 
 @api_view(['POST'])
 def profile_creativestyles(request):
