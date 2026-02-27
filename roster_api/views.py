@@ -409,15 +409,21 @@ def invite(request):
 
 @api_view(['GET'])
 def profile_get(request):
-    # Mocking auth for now
-    user_id = request.headers.get('X-User-ID') or request.query_params.get('user_id')
-    if not user_id:
+    # Try Bearer token auth first
+    user = get_authenticated_user(request)
+    
+    if not user:
+        # Fallback: check 'user' or 'user_id' query param (can be UUID or numeric ID)
+        user_param = request.query_params.get('user') or request.query_params.get('user_id')
+        if user_param:
+            if len(str(user_param)) > 10:
+                user = Users.objects.filter(uuid=user_param).first()
+            else:
+                user = Users.objects.filter(id=user_param).first()
+    
+    if not user:
         return ApiResponse(error="Unauthorized", status=401)
     
-    user = Users.objects.filter(id=user_id).first()
-    if not user:
-        return ApiResponse(error="User not found", status=404)
-        
     serializer = UserSerializer(user)
     data = serializer.data
     
@@ -2732,13 +2738,37 @@ def user_project_info(request):
 @api_view(['GET'])
 def project_index(request):
     """List projects for a user"""
-    user_id = request.headers.get('X-User-ID') or request.query_params.get('user_id')
-    if not user_id:
+    user = get_authenticated_user(request)
+    if not user:
         return Response({'status': 'error', 'message': 'Unauthorized'}, status=401)
     
-    projects = Projects.objects.filter(user_id=user_id)
-    serializer = ProjectSerializer(projects, many=True)
-    return ApiResponse(projects=serializer.data)
+    projects = Projects.objects.filter(
+        models.Q(user=user) | models.Q(editor=user)
+    )
+    
+    # Filter by statuses if provided (comma or dot separated)
+    statuses = request.query_params.get('statuses')
+    if statuses:
+        status_list = statuses.replace('.', ',').split(',')
+        projects = projects.filter(status__in=status_list)
+    
+    # Filter by type
+    project_type = request.query_params.get('type')
+    if project_type == 'hackathon':
+        projects = projects.filter(hackathon=1)
+    elif project_type == 'normal':
+        projects = projects.filter(models.Q(hackathon=0) | models.Q(hackathon__isnull=True))
+    
+    # Pagination
+    page = int(request.query_params.get('page', 1))
+    per_page = int(request.query_params.get('per_page', 20))
+    total = projects.count()
+    start = (page - 1) * per_page
+    end = start + per_page
+    projects_page = projects.order_by('-updated_at')[start:end]
+    
+    serializer = ProjectSerializer(projects_page, many=True)
+    return ApiResponse(projects=serializer.data, total=total, page=page)
 
 @api_view(['GET'])
 def project_public_index(request):

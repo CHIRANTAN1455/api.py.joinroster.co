@@ -231,6 +231,7 @@ urlpatterns = [
 
     # Project Endpoints
     path('project', project_index, name='project_index'),
+    path('project/', project_index, name='project_index_slash'),
     path('project/public', project_public_index, name='project_public_index'),
     path('project/store', project_store, name='project_store'),
     path('project/<uuid:uuid>', project_get, name='project_get'),
