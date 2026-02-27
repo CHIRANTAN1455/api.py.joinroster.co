@@ -4,6 +4,8 @@ from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiExampl
 from django.contrib.auth.hashers import make_password, check_password
 from django.db import models
 from django.db.utils import ProgrammingError
+from django.db import connection, transaction
+from django.db.utils import OperationalError
 from django.utils import timezone
 from django.shortcuts import get_object_or_404
 from .auth_helpers import verify_access_token, check_laravel_password
@@ -11,6 +13,33 @@ from .user_resource import get_user_resource_dict
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+def _is_mysql_missing_table_or_column(exc: Exception) -> bool:
+    args = getattr(exc, "args", None)
+    if not args or not isinstance(args, (list, tuple)) or len(args) < 1:
+        return False
+    return args[0] in (1146, 1054)
+
+
+def _replace_pivot_by_uuids(*, table: str, user_id: int, fk_column: str, model_cls, uuids: list[str]):
+    """
+    Replace a user's pivot rows (hard delete + insert) for Laravel-style pivot tables
+    that do NOT have an `id` column.
+    """
+    uuids = [u for u in (uuids or []) if u]
+    id_map = dict(model_cls.objects.filter(uuid__in=uuids).values_list("uuid", "id"))
+    target_ids = [id_map[u] for u in uuids if u in id_map]
+    now = timezone.now()
+
+    with transaction.atomic():
+        with connection.cursor() as cursor:
+            cursor.execute(f"DELETE FROM `{table}` WHERE user_id = %s", [user_id])
+            if target_ids:
+                cursor.executemany(
+                    f"INSERT INTO `{table}` (user_id, `{fk_column}`, created_at, updated_at) VALUES (%s, %s, %s, %s)",
+                    [(user_id, tid, now, now) for tid in target_ids],
+                )
 
 def get_authenticated_user(request):
     """
@@ -429,29 +458,14 @@ def profile_get(request):
     if not user:
         return ApiResponse(error="Unauthorized", status=401)
     
-    serializer = UserSerializer(user)
-    data = serializer.data
-    
-    # Eager loading equivalent
-    data['pricing'] = UserPricingSerializer(UserPricing.objects.filter(user=user).first()).data
-    data['social_profiles'] = UserSocialProfileSerializer(UserSocialProfile.objects.filter(user=user).first()).data
-    data['skills'] = UserSkillSerializer(UserSkills.objects.filter(user=user), many=True).data
-    data['platforms'] = UserPlatformSerializer(UserPlatforms.objects.filter(user=user), many=True).data
-    data['softwares'] = UserSoftwareSerializer(UserSoftware.objects.filter(user=user), many=True).data
+    # Return Laravel-shaped UserResource (best-effort, never 500 due to missing pivots)
     try:
-        data['equipments'] = UserEquipmentSerializer(UserEquipments.objects.filter(user=user), many=True).data
-    except ProgrammingError as e:
-        # MySQL missing-table error code (e.g. "Table 'laravel.user_equipments' doesn't exist")
-        if getattr(e, "args", None) and len(e.args) >= 1 and e.args[0] == 1146:
-            logger.warning("Missing table user_equipments; returning empty equipments", exc_info=True)
-            data['equipments'] = []
-        else:
-            raise
-    data['creative_styles'] = UserCreativeStyleSerializer(UserCreativeStyles.objects.filter(user=user), many=True).data
-    data['job_types'] = UserJobTypeSerializer(UserJobTypes.objects.filter(user=user), many=True).data
-    data['languages'] = UserLanguageSerializer(UserLanguage.objects.filter(user=user), many=True).data
-    
-    return ApiResponse(user=data)
+        return ApiResponse(user=get_user_resource_dict(user))
+    except (OperationalError, ProgrammingError) as e:
+        if _is_mysql_missing_table_or_column(e):
+            logger.warning("Profile schema mismatch; returning minimal user", exc_info=True)
+            return ApiResponse(user=UserSerializer(user).data)
+        raise
 
 @api_view(['POST'])
 def profile_update(request):
@@ -526,7 +540,10 @@ def profile_update(request):
     user.updated_at = datetime.datetime.now()
     user.save()
     
-    return ApiResponse(message="Profile updated successfully", user=UserSerializer(user).data)
+    try:
+        return ApiResponse(message="Profile updated successfully", user=get_user_resource_dict(user))
+    except Exception:
+        return ApiResponse(message="Profile updated successfully", user=UserSerializer(user).data)
 
 @api_view(['POST'])
 def profile_pricing(request):
@@ -580,14 +597,23 @@ def profile_skills(request):
         return ApiResponse(error="User not found", status=404)
 
     skill_uuids = request.data.get('skills', [])
-    # Sync logic
-    UserSkills.objects.filter(user=user).delete()
-    for uuid in skill_uuids:
-        skill = Skills.objects.filter(uuid=uuid).first()
-        if skill:
-            UserSkills.objects.create(user=user, skill=skill)
+    try:
+        _replace_pivot_by_uuids(
+            table="user_skills",
+            user_id=user.id,
+            fk_column="skill_id",
+            model_cls=Skills,
+            uuids=skill_uuids,
+        )
+    except (OperationalError, ProgrammingError) as e:
+        if _is_mysql_missing_table_or_column(e):
+            return ApiResponse(error="Skills not available (database schema mismatch)", status=503)
+        raise
 
-    return ApiResponse(skills=UserSkillSerializer(UserSkills.objects.filter(user=user), many=True).data)
+    # Return Laravel-shaped resources (skills themselves)
+    skills = Skills.objects.filter(userskills__user=user).distinct()
+    skills_data = [{"id": s.uuid, "icon": s.icon, "name": s.name, "description": s.description} for s in skills]
+    return ApiResponse(skills=skills_data)
 
 @api_view(['POST'])
 def profile_jobtypes(request):
@@ -601,15 +627,41 @@ def profile_jobtypes(request):
 
     job_type_uuids = request.data.get('job_types', [])
     primary_job_uuid = request.data.get('primary_job')
-    
-    UserJobTypes.objects.filter(user=user).delete()
-    for uuid in job_type_uuids:
-        job_type = JobTypes.objects.filter(uuid=uuid).first()
-        if job_type:
-            is_primary = 1 if uuid == primary_job_uuid else 0
-            UserJobTypes.objects.create(user=user, job_type=job_type, primary_job=is_primary)
+    job_type_uuids = [u for u in (job_type_uuids or []) if u]
 
-    return ApiResponse(job_types=UserJobTypeSerializer(UserJobTypes.objects.filter(user=user), many=True).data)
+    try:
+        id_map = dict(JobTypes.objects.filter(uuid__in=job_type_uuids).values_list("uuid", "id"))
+        now = timezone.now()
+        rows = []
+        for u in job_type_uuids:
+            jt_id = id_map.get(u)
+            if not jt_id:
+                continue
+            rows.append((user.id, jt_id, 1 if u == primary_job_uuid else 0, now, now))
+
+        with transaction.atomic():
+            with connection.cursor() as cursor:
+                cursor.execute("DELETE FROM `user_job_types` WHERE user_id = %s", [user.id])
+                if rows:
+                    cursor.executemany(
+                        "INSERT INTO `user_job_types` (user_id, job_type_id, primary_job, created_at, updated_at) VALUES (%s, %s, %s, %s, %s)",
+                        rows,
+                    )
+    except (OperationalError, ProgrammingError) as e:
+        if _is_mysql_missing_table_or_column(e):
+            return ApiResponse(error="Job types not available (database schema mismatch)", status=503)
+        raise
+
+    job_types = (
+        JobTypes.objects.filter(userjobtypes__user=user)
+        .annotate(primary_job=models.F("userjobtypes__primary_job"))
+        .distinct()
+    )
+    job_types_data = [
+        {"id": jt.uuid, "icon": jt.icon, "name": jt.name, "description": jt.description, "primary_job": jt.primary_job}
+        for jt in job_types
+    ]
+    return ApiResponse(job_types=job_types_data)
 
 @api_view(['POST'])
 def profile_contentverticals(request):
@@ -622,13 +674,22 @@ def profile_contentverticals(request):
         return ApiResponse(error="User not found", status=404)
 
     uuids = request.data.get('content_verticals', [])
-    UserContentVerticals.objects.filter(user=user).delete()
-    for uuid in uuids:
-        item = ContentVerticals.objects.filter(uuid=uuid).first()
-        if item:
-            UserContentVerticals.objects.create(user=user, content_vertical=item)
+    try:
+        _replace_pivot_by_uuids(
+            table="user_content_verticals",
+            user_id=user.id,
+            fk_column="content_vertical_id",
+            model_cls=ContentVerticals,
+            uuids=uuids,
+        )
+    except (OperationalError, ProgrammingError) as e:
+        if _is_mysql_missing_table_or_column(e):
+            return ApiResponse(error="Content verticals not available (database schema mismatch)", status=503)
+        raise
 
-    return ApiResponse(content_verticals=UserContentVerticalSerializer(UserContentVerticals.objects.filter(user=user), many=True).data)
+    verticals = ContentVerticals.objects.filter(usercontentverticals__user=user).distinct()
+    verticals_data = [{"id": v.uuid, "icon": v.icon, "name": v.name, "description": v.description} for v in verticals]
+    return ApiResponse(content_verticals=verticals_data)
 
 @api_view(['POST'])
 def profile_contentverticals_new(request):
@@ -640,13 +701,26 @@ def profile_contentverticals_new(request):
     if not user:
         return ApiResponse(error="User not found", status=404)
 
-    uuids = request.data.get('content_verticals', [])
-    for uuid in uuids:
-        item = ContentVerticals.objects.filter(uuid=uuid).first()
-        if item:
-            UserContentVerticals.objects.get_or_create(user=user, content_vertical=item)
+    uuids = [u for u in (request.data.get('content_verticals', []) or []) if u]
+    id_map = dict(ContentVerticals.objects.filter(uuid__in=uuids).values_list("uuid", "id"))
+    now = timezone.now()
+    rows = [(user.id, id_map[u], now, now) for u in uuids if u in id_map]
+    try:
+        with transaction.atomic():
+            with connection.cursor() as cursor:
+                if rows:
+                    cursor.executemany(
+                        "INSERT IGNORE INTO `user_content_verticals` (user_id, content_vertical_id, created_at, updated_at) VALUES (%s, %s, %s, %s)",
+                        rows,
+                    )
+    except (OperationalError, ProgrammingError) as e:
+        if _is_mysql_missing_table_or_column(e):
+            return ApiResponse(error="Content verticals not available (database schema mismatch)", status=503)
+        raise
 
-    return ApiResponse(content_verticals=UserContentVerticalSerializer(UserContentVerticals.objects.filter(user=user), many=True).data)
+    verticals = ContentVerticals.objects.filter(usercontentverticals__user=user).distinct()
+    verticals_data = [{"id": v.uuid, "icon": v.icon, "name": v.name, "description": v.description} for v in verticals]
+    return ApiResponse(content_verticals=verticals_data)
 
 @api_view(['POST'])
 def profile_platforms(request):
@@ -659,13 +733,22 @@ def profile_platforms(request):
         return ApiResponse(error="User not found", status=404)
 
     uuids = request.data.get('platforms', [])
-    UserPlatforms.objects.filter(user=user).delete()
-    for uuid in uuids:
-        item = Platforms.objects.filter(uuid=uuid).first()
-        if item:
-            UserPlatforms.objects.create(user=user, platform=item)
+    try:
+        _replace_pivot_by_uuids(
+            table="user_platforms",
+            user_id=user.id,
+            fk_column="platform_id",
+            model_cls=Platforms,
+            uuids=uuids,
+        )
+    except (OperationalError, ProgrammingError) as e:
+        if _is_mysql_missing_table_or_column(e):
+            return ApiResponse(error="Platforms not available (database schema mismatch)", status=503)
+        raise
 
-    return ApiResponse(platforms=UserPlatformSerializer(UserPlatforms.objects.filter(user=user), many=True).data)
+    platforms = Platforms.objects.filter(userplatforms__user=user).distinct()
+    platforms_data = [{"id": p.uuid, "icon": p.icon, "name": p.name, "description": p.description} for p in platforms]
+    return ApiResponse(platforms=platforms_data)
 
 @api_view(['POST'])
 def profile_softwares(request):
@@ -678,13 +761,22 @@ def profile_softwares(request):
         return ApiResponse(error="User not found", status=404)
 
     uuids = request.data.get('softwares', [])
-    UserSoftware.objects.filter(user=user).delete()
-    for uuid in uuids:
-        item = Software.objects.filter(uuid=uuid).first()
-        if item:
-            UserSoftware.objects.create(user=user, software=item)
+    try:
+        _replace_pivot_by_uuids(
+            table="user_software",
+            user_id=user.id,
+            fk_column="software_id",
+            model_cls=Software,
+            uuids=uuids,
+        )
+    except (OperationalError, ProgrammingError) as e:
+        if _is_mysql_missing_table_or_column(e):
+            return ApiResponse(error="Softwares not available (database schema mismatch)", status=503)
+        raise
 
-    return ApiResponse(softwares=UserSoftwareSerializer(UserSoftware.objects.filter(user=user), many=True).data)
+    softwares = Software.objects.filter(usersoftware__user=user).distinct()
+    softwares_data = [{"id": s.uuid, "icon": s.icon, "name": s.name, "description": s.description} for s in softwares]
+    return ApiResponse(softwares=softwares_data)
 
 @api_view(['POST'])
 def profile_equipments(request):
@@ -698,21 +790,21 @@ def profile_equipments(request):
 
     uuids = request.data.get('equipments', [])
     try:
-        UserEquipments.objects.filter(user=user).delete()
-        for uuid in uuids:
-            item = Equipment.objects.filter(uuid=uuid).first()
-            if item:
-                UserEquipments.objects.create(user=user, equipment=item)
-
-        return ApiResponse(equipments=UserEquipmentSerializer(UserEquipments.objects.filter(user=user), many=True).data)
-    except ProgrammingError as e:
-        if getattr(e, "args", None) and len(e.args) >= 1 and e.args[0] == 1146:
-            logger.warning("Missing table user_equipments; cannot update equipments", exc_info=True)
-            return ApiResponse(
-                error="Equipments not available (missing database table user_equipments)",
-                status=503,
-            )
+        _replace_pivot_by_uuids(
+            table="user_equipment",
+            user_id=user.id,
+            fk_column="equipment_id",
+            model_cls=Equipment,
+            uuids=uuids,
+        )
+    except (OperationalError, ProgrammingError) as e:
+        if _is_mysql_missing_table_or_column(e):
+            return ApiResponse(error="Equipments not available (database schema mismatch)", status=503)
         raise
+
+    equipments = Equipment.objects.filter(userequipments__user=user).distinct()
+    equipments_data = [{"id": e.uuid, "icon": e.icon, "name": e.name, "description": e.description} for e in equipments]
+    return ApiResponse(equipments=equipments_data)
 
 @api_view(['POST'])
 def profile_creativestyles(request):
@@ -725,13 +817,22 @@ def profile_creativestyles(request):
         return ApiResponse(error="User not found", status=404)
 
     uuids = request.data.get('creative_styles', [])
-    UserCreativeStyles.objects.filter(user=user).delete()
-    for uuid in uuids:
-        item = CreativeStyles.objects.filter(uuid=uuid).first()
-        if item:
-            UserCreativeStyles.objects.create(user=user, creative_style=item)
+    try:
+        _replace_pivot_by_uuids(
+            table="user_creative_styles",
+            user_id=user.id,
+            fk_column="creative_style_id",
+            model_cls=CreativeStyles,
+            uuids=uuids,
+        )
+    except (OperationalError, ProgrammingError) as e:
+        if _is_mysql_missing_table_or_column(e):
+            return ApiResponse(error="Creative styles not available (database schema mismatch)", status=503)
+        raise
 
-    return ApiResponse(creative_styles=UserCreativeStyleSerializer(UserCreativeStyles.objects.filter(user=user), many=True).data)
+    creative_styles = CreativeStyles.objects.filter(usercreativestyles__user=user).distinct()
+    creative_styles_data = [{"id": cs.uuid, "icon": cs.icon, "name": cs.name, "description": cs.description} for cs in creative_styles]
+    return ApiResponse(creative_styles=creative_styles_data)
 
 @api_view(['GET'])
 def profile_social(request):

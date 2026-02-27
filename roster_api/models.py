@@ -1183,13 +1183,15 @@ class UserRoles(models.Model):
         unique_together = (('user', 'role'),)
 
 class UserLanguage(models.Model):
-    id = models.BigAutoField(primary_key=True)
-    uuid = models.CharField(max_length=36)
+    # Laravel migration creates `user_languages` without an `id` column.
+    # Use `uuid` as the primary key to keep Django ORM functional.
+    uuid = models.CharField(max_length=36, primary_key=True)
     user = models.ForeignKey('Users', models.DO_NOTHING)
     name = models.CharField(max_length=255)
     proficiency = models.CharField(max_length=255, blank=True, null=True)
     created_at = models.DateTimeField(blank=True, null=True)
     updated_at = models.DateTimeField(blank=True, null=True)
+    deleted_at = models.DateTimeField(blank=True, null=True)
 
     class Meta:
         managed = False
@@ -1246,7 +1248,8 @@ class UserEquipments(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'user_equipments'
+        # Laravel table name is `user_equipment` (singular)
+        db_table = 'user_equipment'
         unique_together = (('user', 'equipment'),)
 
 class UserCreativeStyles(models.Model):
