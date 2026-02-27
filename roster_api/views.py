@@ -99,7 +99,8 @@ from .serializers import (
     FilesSerializer,
     AdminUserSerializer,
     AdminProjectSerializer, UserTodoSerializer, ReferralCodeSerializer,
-    ProjectFeedbackUserSerializer, ProjectFeedbackEditorSerializer
+    ProjectFeedbackUserSerializer, ProjectFeedbackEditorSerializer,
+    UserPlatformSerializer, UserContentVerticalSerializer
 )
 
 
@@ -2486,10 +2487,9 @@ def profile_statistics(request):
         
     applications_this_week = ProjectApplications.objects.filter(
         project__user=user,
-        project__hackathon__ne=1,
         project__status='open',
         status='pending'
-    ).count()
+    ).exclude(project__hackathon=1).count()
     
     # profile_visits count (assuming a ProfileVisits model exists or is a count field)
     # For now, placeholder 0 as per Laravel's conditional
