@@ -2864,8 +2864,12 @@ def project_index(request):
     if not user:
         return Response({'status': 'error', 'message': 'Unauthorized'}, status=401)
     
-    projects = Projects.objects.filter(
-        models.Q(user=user) | models.Q(editor=user)
+    projects = (
+        Projects.objects.filter(
+            models.Q(user=user) | models.Q(editor=user)
+        )
+        .select_related('user', 'editor')
+        .prefetch_related('milestones', 'references', 'history')
     )
     
     # Filter by statuses if provided (comma or dot separated)
@@ -2895,7 +2899,12 @@ def project_index(request):
 @api_view(['GET'])
 def project_public_index(request):
     """List public projects (Jobs)"""
-    projects = Projects.objects.filter(published=1)
+    projects = (
+        Projects.objects.filter(published=1)
+        .select_related('user', 'editor')
+        .prefetch_related('milestones', 'references', 'history')
+        .order_by('-created_at')
+    )
     serializer = ProjectSerializer(projects, many=True)
     return ApiResponse(projects=serializer.data)
 
