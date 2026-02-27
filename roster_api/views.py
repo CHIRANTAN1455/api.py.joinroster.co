@@ -5188,6 +5188,332 @@ def job_posting_edit_update(request, uuid):
         status=200,
     )
 
+
+# ============================================================================
+# Option A stubs for remaining Laravel controllers
+# (Questionnaire, Callback, Vouching, Crew, Custom Screening, ContentForm@get)
+# ============================================================================
+
+@api_view(['GET'])
+def questionnaire_get(request, id):
+    """
+    Stub for Laravel QuestionnaireController@get
+    Route: GET /questionnaire/{id}
+    """
+    return Response(
+        {
+            "status": "error",
+            "message": "Questionnaire API is not yet implemented on Python backend.",
+            "questionnaire": None,
+        },
+        status=501,
+    )
+
+
+@api_view(['POST'])
+def questionnaire_add(request):
+    """
+    Stub for Laravel QuestionnaireController@add
+    Route: POST /questionnaire/add
+    """
+    return Response(
+        {
+            "status": "error",
+            "message": "Questionnaire submission is not yet implemented on Python backend.",
+        },
+        status=501,
+    )
+
+
+@api_view(['POST'])
+def callback_stripe(request):
+    """
+    Stub for Laravel CallbackController@stripe
+    Route: POST /callback/stripe
+    """
+    return Response(
+        {
+            "status": "error",
+            "message": "Stripe callback handling is not yet implemented on Python backend.",
+        },
+        status=501,
+    )
+
+
+@api_view(['POST'])
+def callback_post_transaction_slack(request):
+    """
+    Stub for Laravel CallbackController@postTransactionSlackHandle
+    Route: POST /callback/post-transaction/slack
+    """
+    return Response(
+        {
+            "status": "error",
+            "message": "Post-transaction Slack handler is not yet implemented on Python backend.",
+        },
+        status=501,
+    )
+
+
+@api_view(['POST'])
+def callback_post_transaction_email(request):
+    """
+    Stub for Laravel CallbackController@postTransactionEmailHandle
+    Route: POST /callback/post-transaction/email
+    """
+    return Response(
+        {
+            "status": "error",
+            "message": "Post-transaction email handler is not yet implemented on Python backend.",
+        },
+        status=501,
+    )
+
+
+@api_view(['POST'])
+def callback_webflow(request):
+    """
+    Stub for Laravel CallbackController@webflow
+    Route: POST /callback/webflow
+    """
+    return Response(
+        {
+            "status": "error",
+            "message": "Webflow callback handling is not yet implemented on Python backend.",
+        },
+        status=501,
+    )
+
+
+@api_view(['GET'])
+def vouching_verify_token(request):
+    """
+    Stub for VouchingController@verifyToken
+    Route: (to be wired) /vouching/verify-token
+    """
+    return Response(
+        {
+            "status": "error",
+            "message": "Vouching verifyToken is not yet implemented on Python backend.",
+        },
+        status=501,
+    )
+
+
+@api_view(['POST'])
+def vouching_create(request):
+    """
+    Stub for VouchingController@create
+    """
+    return Response(
+        {
+            "status": "error",
+            "message": "Vouching create is not yet implemented on Python backend.",
+        },
+        status=501,
+    )
+
+
+@api_view(['POST'])
+def vouching_log_attempt(request):
+    """
+    Stub for VouchingController@logAttempt
+    """
+    return Response(
+        {
+            "status": "error",
+            "message": "Vouching logAttempt is not yet implemented on Python backend.",
+        },
+        status=501,
+    )
+
+
+@api_view(['GET'])
+def vouching_status(request):
+    """
+    Stub for VouchingController@status
+    """
+    return Response(
+        {
+            "status": "error",
+            "message": "Vouching status is not yet implemented on Python backend.",
+        },
+        status=501,
+    )
+
+
+@api_view(['POST'])
+def vouching_creator_response(request):
+    """
+    Stub for VouchingController@creatorResponse
+    """
+    return Response(
+        {
+            "status": "error",
+            "message": "Vouching creatorResponse is not yet implemented on Python backend.",
+        },
+        status=501,
+    )
+
+
+@api_view(['GET'])
+def vouching_list(request):
+    """
+    Stub for VouchingController@list
+    """
+    return Response(
+        {
+            "status": "error",
+            "message": "Vouching list is not yet implemented on Python backend.",
+        },
+        status=501,
+    )
+
+
+@api_view(['GET'])
+def crew_index(request):
+    """
+    Stub for CrewController@index
+    """
+    return Response(
+        {
+            "status": "error",
+            "message": "Crew index is not yet implemented on Python backend.",
+            "data": [],
+        },
+        status=501,
+    )
+
+
+@api_view(['POST'])
+def crew_store(request):
+    """
+    Stub for CrewController@store
+    """
+    return Response(
+        {
+            "status": "error",
+            "message": "Crew store is not yet implemented on Python backend.",
+        },
+        status=501,
+    )
+
+
+@api_view(['DELETE'])
+def crew_destroy(request, uuid=None):
+    """
+    Stub for CrewController@destroy
+    """
+    return Response(
+        {
+            "status": "error",
+            "message": "Crew destroy is not yet implemented on Python backend.",
+        },
+        status=501,
+    )
+
+
+@api_view(['GET'])
+def custom_screening_question_index(request):
+    """
+    Stub for CustomScreeningQuestionController@index
+    """
+    return Response(
+        {
+            "status": "error",
+            "message": "Custom screening question index is not yet implemented on Python backend.",
+            "questions": [],
+        },
+        status=501,
+    )
+
+
+@api_view(['POST'])
+def custom_screening_question_store(request):
+    """
+    Stub for CustomScreeningQuestionController@store
+    """
+    return Response(
+        {
+            "status": "error",
+            "message": "Custom screening question store is not yet implemented on Python backend.",
+        },
+        status=501,
+    )
+
+
+@api_view(['PATCH'])
+def custom_screening_question_update(request, uuid=None):
+    """
+    Stub for CustomScreeningQuestionController@update
+    """
+    return Response(
+        {
+            "status": "error",
+            "message": "Custom screening question update is not yet implemented on Python backend.",
+        },
+        status=501,
+    )
+
+
+@api_view(['DELETE'])
+def custom_screening_question_destroy(request, uuid=None):
+    """
+    Stub for CustomScreeningQuestionController@destroy
+    """
+    return Response(
+        {
+            "status": "error",
+            "message": "Custom screening question destroy is not yet implemented on Python backend.",
+        },
+        status=501,
+    )
+
+
+@api_view(['POST'])
+def custom_screening_question_store_answer(request):
+    """
+    Stub for CustomScreeningQuestionController@storeAnswer
+    """
+    return Response(
+        {
+            "status": "error",
+            "message": "Custom screening question storeAnswer is not yet implemented on Python backend.",
+        },
+        status=501,
+    )
+
+
+@api_view(['GET'])
+def custom_screening_question_applicant_answers(request, uuid=None):
+    """
+    Stub for CustomScreeningQuestionController@applicantAnswers
+    """
+    return Response(
+        {
+            "status": "error",
+            "message": "Custom screening question applicantAnswers is not yet implemented on Python backend.",
+            "answers": [],
+        },
+        status=501,
+    )
+
+
+@api_view(['GET'])
+def content_forms_get(request):
+    """
+    Stub for ContentFormController@get
+    Route: GET /contentforms/get
+    """
+    return Response(
+        {
+            "status": "error",
+            "message": "Content form detail API is not yet implemented on Python backend.",
+            "content_form": None,
+        },
+        status=501,
+    )
+
 # --- Webhooks & Utilities ---
 
 @api_view(['GET'])

@@ -37,6 +37,16 @@ from .views import (
     user_todo_get_first, user_todo_get_last, user_todo_create, user_todo_update, user_todo_delete,
     referral_records_index, referral_paid_records,
     public_job_listing_index, free_job_posting_allocate, job_posting_edit_update,
+    # Option A stubs
+    questionnaire_get, questionnaire_add,
+    callback_stripe, callback_post_transaction_slack, callback_post_transaction_email, callback_webflow,
+    vouching_verify_token, vouching_create, vouching_log_attempt, vouching_status,
+    vouching_creator_response, vouching_list,
+    crew_index, crew_store, crew_destroy,
+    custom_screening_question_index, custom_screening_question_store,
+    custom_screening_question_update, custom_screening_question_destroy,
+    custom_screening_question_store_answer, custom_screening_question_applicant_answers,
+    content_forms_get,
 )
 
 from .views import user_notifications
@@ -255,6 +265,40 @@ urlpatterns = [
     path('public-job-listing', public_job_listing_index, name='public_job_listing_index'),
     path('freejobpost', free_job_posting_allocate, name='free_job_posting_allocate'),
     path('job-posting/edit/<uuid:uuid>', job_posting_edit_update, name='job_posting_edit_update'),
+
+    # QuestionnaireController stubs
+    path('questionnaire/<id>', questionnaire_get, name='questionnaire_get'),
+    path('questionnaire/add', questionnaire_add, name='questionnaire_add'),
+
+    # CallbackController stubs
+    path('callback/stripe', callback_stripe, name='callback_stripe'),
+    path('callback/post-transaction/slack', callback_post_transaction_slack, name='callback_post_transaction_slack'),
+    path('callback/post-transaction/email', callback_post_transaction_email, name='callback_post_transaction_email'),
+    path('callback/webflow', callback_webflow, name='callback_webflow'),
+
+    # VouchingController stubs (exact paths can be adjusted to match FE usage)
+    path('vouching/verify-token', vouching_verify_token, name='vouching_verify_token'),
+    path('vouching/create', vouching_create, name='vouching_create'),
+    path('vouching/log-attempt', vouching_log_attempt, name='vouching_log_attempt'),
+    path('vouching/status', vouching_status, name='vouching_status'),
+    path('vouching/creator-response', vouching_creator_response, name='vouching_creator_response'),
+    path('vouching/list', vouching_list, name='vouching_list'),
+
+    # CrewController stubs
+    path('crew', crew_index, name='crew_index'),
+    path('crew', crew_store, name='crew_store'),
+    path('crew/<uuid:uuid>', crew_destroy, name='crew_destroy'),
+
+    # CustomScreeningQuestionController stubs
+    path('custom-screening/questions', custom_screening_question_index, name='custom_screening_question_index'),
+    path('custom-screening/questions', custom_screening_question_store, name='custom_screening_question_store'),
+    path('custom-screening/questions/<uuid:uuid>', custom_screening_question_update, name='custom_screening_question_update'),
+    path('custom-screening/questions/<uuid:uuid>', custom_screening_question_destroy, name='custom_screening_question_destroy'),
+    path('custom-screening/questions/answer', custom_screening_question_store_answer, name='custom_screening_question_store_answer'),
+    path('custom-screening/questions/<uuid:uuid>/answers', custom_screening_question_applicant_answers, name='custom_screening_question_applicant_answers'),
+
+    # ContentFormController@get stub
+    path('contentforms/get', content_forms_get, name='content_forms_get'),
 
     # Matching Endpoints
     path('matching', matching_index, name='matching_index'),
